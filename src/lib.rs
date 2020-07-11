@@ -211,6 +211,7 @@ pub enum Literal {
     Bool(bool),
     Date(NaiveDate),
     Str(String),
+    DateMonth(Month),
     Null,
     Number {
         integral: String,
@@ -232,6 +233,10 @@ impl Literal {
         Self::Str(s.to_owned())
     }
 
+    fn month(month: Month) -> Self {
+        Self::DateMonth(month)
+    }
+
     fn num(
         integral: String,
         fractional: Option<String>,
@@ -246,6 +251,30 @@ impl Literal {
 
     fn int(n: u32) -> Self {
         Self::num(format!("{}", n), None, None)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Month {
+    year: i32,
+    month: u32,
+}
+
+impl Month {
+    pub fn new(year: i32, month: u32) -> Option<Self> {
+        match month {
+            (1..=12) => Some(Self { year, month }),
+            _ => None
+        }
+    }
+
+    pub fn year(&self) -> i32 {
+        self.year
+    }
+
+    /// Returns a number between 1 and 12 inclusive.
+    pub fn month(&self) -> u32 {
+        self.month
     }
 }
 
@@ -307,19 +336,34 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
         parse_bool_literal_expr,
         parse_null_literal_expr,
         parse_date_literal_expr,
+        parse_month_literal_expr,
     ))(input)
 }
 
+fn valid_digit(input: &str) -> IResult<&str, char> {
+    one_of("1234567890")(input)
+}
+
+fn parse_month_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let parse_year = terminated(count(valid_digit, 4), tag("-"));
+    let parse_month = count(valid_digit, 2);
+    let (input, (year, month)) = pair(parse_year, parse_month)(input)?;
+    let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
+    let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
+    let year_month = Month::new(year, month).expect("Month literal should be valid");
+    Ok((input, Expr::new_literal(Literal::month(year_month))))
+}
+
 fn parse_date_literal_expr(input: &str) -> IResult<&str, Expr> {
-    let valid_digit = one_of("1234567890");
-    let year = terminated(count(valid_digit, 4), tag("-"));
+    // let valid_digit = one_of("1234567890");
+    let parse_year = terminated(count(valid_digit, 4), tag("-"));
 
-    let valid_digit = one_of("1234567890");
-    let month = terminated(count(valid_digit, 2), tag("-"));
+    // let valid_digit = one_of("1234567890");
+    let parse_month = terminated(count(valid_digit, 2), tag("-"));
 
-    let valid_digit = one_of("1234567890");
-    let day = count(valid_digit, 2);
-    let (input, (year, month, day)) = tuple((year, month, day))(input)?;
+    // let valid_digit = one_of("1234567890");
+    let parse_day = count(valid_digit, 2);
+    let (input, (year, month, day)) = tuple((parse_year, parse_month, parse_day))(input)?;
     let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
     let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
     let day = day.into_iter().collect::<String>().parse().expect("Day should be a valid int");
@@ -427,6 +471,19 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_month_literal_expr_works() {
+        let s = "1999-01";
+        let month = Month::new(1999, 1).unwrap();
+        let expected = Expr::new_literal(Literal::month(month));
+        assert_eq!(parse_month_literal_expr(s).unwrap(), ("", expected));
+
+        let s = "2020-07";
+        let month = Month::new(2020, 7).unwrap();
+        let expected = Expr::new_literal(Literal::month(month));
+        assert_eq!(parse_month_literal_expr(s).unwrap(), ("", expected));
+    }
 
     #[test]
     fn parse_date_literal_expr_works() {
