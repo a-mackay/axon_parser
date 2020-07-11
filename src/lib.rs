@@ -207,6 +207,7 @@ impl Expr {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Literal {
+    Bool(bool),
     Str(String),
     Number {
         integral: String,
@@ -216,6 +217,10 @@ pub enum Literal {
 }
 
 impl Literal {
+    fn bool(b: bool) -> Self {
+        Self::Bool(b)
+    }
+
     fn str(s: &str) -> Self {
         Self::Str(s.to_owned())
     }
@@ -293,6 +298,16 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
         parse_double_quoted_string_literal_expr,
         parse_number_literal_expr,
     ))(input)
+}
+
+fn parse_bool_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, bool_str) = alt((tag("true"), tag("false")))(input)?;
+    let b = match bool_str {
+        "true" => true,
+        "false" => false,
+        _ => unreachable!(),
+    };
+    Ok((input, Expr::new_literal(Literal::bool(b))))
 }
 
 fn parse_number_literal_expr(input: &str) -> IResult<&str, Expr> {
@@ -378,6 +393,17 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_bool_literal_expr_works() {
+        let t = "true";
+        let expected = Expr::new_literal(Literal::bool(true));
+        assert_eq!(parse_bool_literal_expr(t).unwrap(), ("", expected));
+
+        let f = "false";
+        let expected = Expr::new_literal(Literal::bool(false));
+        assert_eq!(parse_bool_literal_expr(f).unwrap(), ("", expected));
+    }
 
     #[test]
     fn parse_number_literal_works_for_basic_num() {
