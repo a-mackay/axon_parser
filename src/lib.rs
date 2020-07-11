@@ -1,21 +1,55 @@
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
-    character::complete::{none_of, one_of},
+    character::complete::{alphanumeric0, none_of, one_of},
     combinator::map,
     multi::{many0, many1},
-    sequence::delimited,
+    sequence::{delimited, separated_pair, terminated},
     IResult,
 };
 
 #[derive(Debug, Eq, PartialEq)]
 enum Expr {
+    Def {
+        var_name: Id,
+        expr: Box<Expr>,
+    },
     Return { expr: Box<Expr> },
     Throw { expr: Box<Expr> },
     Literal(Literal),
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct Id {
+    id_str: String
+}
+
+impl Id {
+    fn new(s: &str) -> Self {
+        // TODO check if s is in the correct format.
+        Self {
+            id_str: s.to_owned(),
+        }
+    }
+}
+
+fn parse_id(input: &str) -> IResult<&str, Id> {
+    let lowercase_chars = "abcdefghijklmnopqrstuvwxyz";
+    let (input, first_char) = one_of(lowercase_chars)(input)?;
+    let (input, remaining_chars) = alphanumeric0(input)?;
+    let id_str = format!("{}{}", first_char, remaining_chars);
+    let id = Id::new(&id_str);
+    Ok((input, id))
+}
+
 impl Expr {
+    fn new_def(var_name: Id, expr: Expr) -> Self {
+        Self::Def {
+            var_name: var_name,
+            expr: Box::new(expr),
+        }
+    }
+
     fn new_return(expr: Expr) -> Self {
         Self::Return {
             expr: Box::new(expr),
@@ -44,6 +78,28 @@ impl Literal {
     }
 }
 
+fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, id) = terminated(parse_id, tag(":"))(input)?;
+    let (input, _) = many0(alt((parse_whitespace, parse_newline_and_whitespace)))(input)?;
+    let (input, expr) = parse_expr(input)?;
+    let def_expr = Expr::new_def(id, expr);
+    Ok((input, def_expr))
+}
+
+fn parse_newline_and_whitespace(input: &str) -> IResult<&str, ()> {
+    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = parse_newline(input)?;
+    let (input, _) = many0(parse_whitespace)(input)?;
+    Ok((input, ()))
+}
+
+fn parse_newline(input: &str) -> IResult<&str, ()> {
+    map(
+        tag("\n"),
+        |_| ()
+    )(input)
+}
+
 fn parse_throw_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = parse_throw_keyword(input)?;
     let (input, _) = parse_whitespace(input)?;
@@ -66,7 +122,7 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    alt((parse_literal_expr, parse_return_expr, parse_throw_expr))(input)
+    alt((parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr))(input)
 }
 
 fn parse_whitespace(input: &str) -> IResult<&str, ()> {
@@ -102,6 +158,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_id_works_for_valid_ids() {
+        let s = "x";
+        let expected = Id::new("x");
+        assert_eq!(parse_id(s).unwrap(), ("", expected));
+
+        let s = "varName";
+        let expected = Id::new("varName");
+        assert_eq!(parse_id(s).unwrap(), ("", expected));
+
+        let s = "v0";
+        let expected = Id::new("v0");
+        assert_eq!(parse_id(s).unwrap(), ("", expected));
+    }
+
+    #[test]
+    fn parse_id_fails_for_empty_id() {
+        let s = "";
+        assert!(parse_id(s).is_err());
+    }
+
+    #[test]
+    fn parse_id_fails_for_invalid_ids() {
+        let s = "Capital";
+        assert!(parse_id(s).is_err());
+
+        let s = "1stVar";
+        assert!(parse_id(s).is_err());
+    }
+
+    #[test]
     fn parse_whitespace_works() {
         let s = " afterWhitespace";
         assert_eq!(parse_whitespace(s).unwrap(), ("afterWhitespace", ()));
@@ -111,6 +197,39 @@ mod tests {
 
         let s = " \t  \tafterWhitespace";
         assert_eq!(parse_whitespace(s).unwrap(), ("afterWhitespace", ()));
+    }
+
+    #[test]
+    fn parse_expr_def_works() {
+        let e = "x: \"Hello\"";
+        let expect_id = Id::new("x");
+        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(
+            parse_expr(e).unwrap(),
+            ("", expect)
+        );
+    }
+
+    #[test]
+    fn parse_expr_def_works_with_no_separating_whitespace() {
+        let e = "x:\"Hello\"";
+        let expect_id = Id::new("x");
+        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(
+            parse_expr(e).unwrap(),
+            ("", expect)
+        );
+    }
+
+    #[test]
+    fn parse_expr_def_works_with_many_separating_whitespace() {
+        let e = "x: \n  \t   \"Hello\"";
+        let expect_id = Id::new("x");
+        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(
+            parse_expr(e).unwrap(),
+            ("", expect)
+        );
     }
 
     #[test]
