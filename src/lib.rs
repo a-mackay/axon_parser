@@ -4,9 +4,20 @@ use nom::{
     character::complete::{alphanumeric0, none_of, one_of},
     combinator::map,
     multi::{many0, many1},
-    sequence::{delimited, separated_pair, terminated},
+    sequence::{delimited, separated_pair, terminated, preceded},
     IResult,
 };
+
+#[derive(Debug, Eq, PartialEq)]
+struct DoBlock {
+    exprs: Exprs,
+}
+
+impl DoBlock {
+    fn new(exprs: Exprs) -> Self {
+        Self { exprs }
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
 enum Expr {
@@ -17,6 +28,40 @@ enum Expr {
     Return { expr: Box<Expr> },
     Throw { expr: Box<Expr> },
     Literal(Literal),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct Exprs {
+    exprs: Vec<Expr>,
+}
+
+impl Exprs {
+    fn new(exprs: Vec<Expr>) -> Self {
+        Self { exprs }
+    }
+}
+
+fn parse_exprs(input: &str) -> IResult<&str, Exprs> {
+    let (input, first_expr) = parse_expr(input)?;
+    let separators = alt((parse_newline_and_whitespace, parse_expr_separator_and_whitespace));
+    let (input, mut remaining_exprs) = many0(preceded(separators, parse_expr))(input)?;
+    remaining_exprs.insert(0, first_expr);
+    let exprs = Exprs::new(remaining_exprs);
+    Ok((input, exprs))
+}
+
+fn parse_expr_separator_and_whitespace(input: &str) -> IResult<&str, ()> {
+    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = parse_exprs_separator(input)?;
+    let (input, _) = many0(parse_whitespace)(input)?;
+    Ok((input, ()))
+}
+
+fn parse_exprs_separator(input: &str) -> IResult<&str, ()> {
+    map(
+        tag(";"),
+        |_| ()
+    )(input)
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -156,6 +201,50 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_exprs_works_for_single_expr() {
+        let s = "return \"test\"";
+        let expect_expr = Expr::new_return(Expr::new_literal(Literal::str("test")));
+        let expect = Exprs::new(vec![expect_expr]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect))
+    }
+
+    #[test]
+    fn parse_exprs_works_for_semicolon_separated_exprs() {
+        let s = "return \"one\"; return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+
+        let s = "return \"one\";return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+
+        let s = "return \"one\"  \t ; \t return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_exprs_works_for_newline_separated_exprs() {
+        let s = "return \"one\"\nreturn \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+
+        let s = "return \"one\"  \t  \n  \t return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+    }
 
     #[test]
     fn parse_id_works_for_valid_ids() {
