@@ -1,10 +1,11 @@
+use chrono::NaiveDate;
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
     character::complete::{alphanumeric0, digit1, none_of, one_of},
     combinator::{map, opt},
-    multi::{many0, many1},
-    sequence::{delimited, pair, preceded, terminated},
+    multi::{count, many0, many1},
+    sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
@@ -208,6 +209,7 @@ impl Expr {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Literal {
     Bool(bool),
+    Date(NaiveDate),
     Str(String),
     Null,
     Number {
@@ -218,6 +220,10 @@ pub enum Literal {
 }
 
 impl Literal {
+    fn date(year: i32, month: u32, day: u32) -> Self {
+        Self::Date(NaiveDate::from_ymd(year, month, day))
+    }
+
     fn bool(b: bool) -> Self {
         Self::Bool(b)
     }
@@ -300,7 +306,25 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
         parse_number_literal_expr,
         parse_bool_literal_expr,
         parse_null_literal_expr,
+        parse_date_literal_expr,
     ))(input)
+}
+
+fn parse_date_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let valid_digit = one_of("1234567890");
+    let year = terminated(count(valid_digit, 4), tag("-"));
+
+    let valid_digit = one_of("1234567890");
+    let month = terminated(count(valid_digit, 2), tag("-"));
+
+    let valid_digit = one_of("1234567890");
+    let day = count(valid_digit, 2);
+    let (input, (year, month, day)) = tuple((year, month, day))(input)?;
+    let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
+    let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
+    let day = day.into_iter().collect::<String>().parse().expect("Day should be a valid int");
+
+    Ok((input, Expr::new_literal(Literal::date(year, month, day))))
 }
 
 fn parse_null_literal_expr(input: &str) -> IResult<&str, Expr> {
@@ -403,6 +427,17 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_date_literal_expr_works() {
+        let s = "1999-01-01";
+        let expected = Expr::new_literal(Literal::date(1999, 1, 1));
+        assert_eq!(parse_date_literal_expr(s).unwrap(), ("", expected));
+
+        let s = "2020-07-11";
+        let expected = Expr::new_literal(Literal::date(2020, 7, 11));
+        assert_eq!(parse_date_literal_expr(s).unwrap(), ("", expected));
+    }
 
     #[test]
     fn parse_null_literal_expr_works() {
