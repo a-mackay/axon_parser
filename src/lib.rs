@@ -210,6 +210,7 @@ impl Expr {
 pub enum Literal {
     Bool(bool),
     Date(NaiveDate),
+    Ref(String),
     Str(String),
     DateMonth(Month),
     Null,
@@ -227,6 +228,10 @@ impl Literal {
 
     fn bool(b: bool) -> Self {
         Self::Bool(b)
+    }
+
+    fn ref_lit(ref_str: &str) -> Self {
+        Self::Ref(ref_str.to_owned())
     }
 
     fn str(s: &str) -> Self {
@@ -337,7 +342,17 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
         parse_null_literal_expr,
         parse_date_literal_expr,
         parse_month_literal_expr,
+        parse_ref_literal_expr,
     ))(input)
+}
+
+fn parse_ref_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = tag("@")(input)?;
+    let ref_char = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_:.~-");
+    let (input, ref_chars) = many1(ref_char)(input)?;
+    let ref_str = ref_chars.into_iter().collect::<String>().to_owned();
+    let ref_str = format!("@{}", ref_str);
+    Ok((input, Expr::new_literal(Literal::ref_lit(&ref_str))))
 }
 
 fn valid_digit(input: &str) -> IResult<&str, char> {
@@ -355,15 +370,12 @@ fn parse_month_literal_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_date_literal_expr(input: &str) -> IResult<&str, Expr> {
-    // let valid_digit = one_of("1234567890");
     let parse_year = terminated(count(valid_digit, 4), tag("-"));
-
-    // let valid_digit = one_of("1234567890");
     let parse_month = terminated(count(valid_digit, 2), tag("-"));
-
-    // let valid_digit = one_of("1234567890");
     let parse_day = count(valid_digit, 2);
+
     let (input, (year, month, day)) = tuple((parse_year, parse_month, parse_day))(input)?;
+
     let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
     let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
     let day = day.into_iter().collect::<String>().parse().expect("Day should be a valid int");
@@ -471,6 +483,20 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_ref_literal_expr_works_for_common_ref() {
+        let s = "@p:some_Project:r:1e85e02f-0459cf96";
+        let expected = Expr::new_literal(Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96"));
+        assert_eq!(parse_ref_literal_expr(s).unwrap(), ("", expected));
+    }
+
+    #[test]
+    fn parse_ref_literal_expr_works_for_uncommon_ref() {
+        let s = "@p:some_Project:r:1e85e02f-0459cf96~_-.:";
+        let expected = Expr::new_literal(Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:"));
+        assert_eq!(parse_ref_literal_expr(s).unwrap(), ("", expected));
+    }
 
     #[test]
     fn parse_month_literal_expr_works() {
