@@ -9,13 +9,13 @@ use nom::{
 };
 
 #[derive(Debug, Eq, PartialEq)]
-struct TryCatch {
+pub struct TryCatchBlock {
     try_expr: Expr,
     caught_id: Option<Id>,
     catch_expr: Expr,
 }
 
-impl TryCatch {
+impl TryCatchBlock {
     fn new(try_expr: Expr, caught_id: Option<Id>, catch_expr: Expr) -> Self {
         Self {
             try_expr,
@@ -25,7 +25,12 @@ impl TryCatch {
     }
 }
 
-fn parse_try_catch(input: &str) -> IResult<&str, TryCatch> {
+fn parse_try_catch_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, try_catch) = parse_try_catch(input)?;
+    Ok((input, Expr::new_try_catch(try_catch)))
+}
+
+fn parse_try_catch(input: &str) -> IResult<&str, TryCatchBlock> {
     let (input, _) = terminated(tag("try"), gap)(input)?;
 
     let (input, opt_try_do) = opt(terminated(tag("do"), gap))(input)?;
@@ -73,7 +78,7 @@ fn parse_try_catch(input: &str) -> IResult<&str, TryCatch> {
 
     let try_do_block = Expr::new_do_block(DoBlock::new(try_exprs));
     let catch_do_block = Expr::new_do_block(DoBlock::new(catch_exprs));
-    let try_catch = TryCatch::new(try_do_block, opt_id, catch_do_block);
+    let try_catch = TryCatchBlock::new(try_do_block, opt_id, catch_do_block);
     Ok((input, try_catch))
 }
 
@@ -102,12 +107,17 @@ pub enum Expr {
     },
     Return { expr: Box<Expr> },
     Throw { expr: Box<Expr> },
+    TryCatch(Box<TryCatchBlock>),
     Literal(Literal),
 }
 
 impl Expr {
     fn new_do_block(do_block: DoBlock) -> Self {
         Self::DoBlock(do_block)
+    }
+
+    fn new_try_catch(try_catch: TryCatchBlock) -> Self {
+        Self::TryCatch(Box::new(try_catch))
     }
 }
 
@@ -204,6 +214,11 @@ impl Literal {
     }
 }
 
+fn parse_do_block_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, do_block) = parse_do_block(input)?;
+    Ok((input, Expr::new_do_block(do_block)))
+}
+
 fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
     let (input, _) = tag("do")(input)?;
     let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
@@ -260,8 +275,7 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    // TODO add do block
-    alt((parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr))(input)
+    alt((parse_try_catch_expr, parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr, parse_do_block_expr))(input)
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
@@ -311,7 +325,7 @@ mod tests {
         let s = "try \"a\" catch \"b\"";
         let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
         let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatch::new(expect_try_expr, None, expect_catch_expr);
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
@@ -320,7 +334,25 @@ mod tests {
         let s = "try do \"a\" end catch do \"b\" end";
         let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
         let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatch::new(expect_try_expr, None, expect_catch_expr);
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_single_line_with_do_but_no_end() {
+        let s = "try do \"a\" catch do \"b\"";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_multi_lines() {
+        let s = "try \"a\" catch \"b\"";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
