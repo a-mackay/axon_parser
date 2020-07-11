@@ -209,6 +209,7 @@ impl Expr {
 pub enum Literal {
     Bool(bool),
     Str(String),
+    Null,
     Number {
         integral: String,
         fractional: Option<String>,
@@ -297,7 +298,16 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_double_quoted_string_literal_expr,
         parse_number_literal_expr,
+        parse_bool_literal_expr,
+        parse_null_literal_expr,
     ))(input)
+}
+
+fn parse_null_literal_expr(input: &str) -> IResult<&str, Expr> {
+    map(
+        tag("null"),
+        |_| Expr::new_literal(Literal::Null)
+    )(input)
 }
 
 fn parse_bool_literal_expr(input: &str) -> IResult<&str, Expr> {
@@ -393,6 +403,13 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_null_literal_expr_works() {
+        let s = "null";
+        let expected = Expr::new_literal(Literal::Null);
+        assert_eq!(parse_null_literal_expr(s).unwrap(), ("", expected));
+    }
 
     #[test]
     fn parse_bool_literal_expr_works() {
