@@ -2,14 +2,88 @@ use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
     character::complete::{alphanumeric0, none_of, one_of},
-    combinator::{opt, map},
+    combinator::{cond, opt, map},
     multi::{many0, many1},
     sequence::{delimited, separated_pair, terminated, preceded},
     IResult,
 };
 
 #[derive(Debug, Eq, PartialEq)]
-struct DoBlock {
+struct TryCatch {
+    try_expr: Expr,
+    caught_id: Option<Id>,
+    catch_expr: Expr,
+}
+
+impl TryCatch {
+    fn new(try_expr: Expr, caught_id: Option<Id>, catch_expr: Expr) -> Self {
+        Self {
+            try_expr,
+            caught_id,
+            catch_expr,
+        }
+    }
+}
+
+fn parse_try_catch(input: &str) -> IResult<&str, TryCatch> {
+    let (input, _) = terminated(tag("try"), gap)(input)?;
+
+    let (input, opt_try_do) = opt(terminated(tag("do"), gap))(input)?;
+    let has_try_do_keyword = opt_try_do.is_some();
+
+    let (input, try_exprs) = parse_exprs(input)?;
+
+    // Remove any blank space, in the case there is any:
+    let (input, _) = opt(gap)(input)?;
+
+    let (input, opt_try_end) = opt(terminated(tag("end"), gap))(input)?;
+    let has_try_end_keyword = opt_try_end.is_some();
+
+    if (has_try_end_keyword && !has_try_do_keyword) {
+        todo!();
+    }
+
+    // Remove any blank space, in the case there was no 'end' keyword:
+    let (input, _) = opt(gap)(input)?;
+
+    let (input, _) = terminated(tag("catch"), gap)(input)?;
+
+    let open_paren = terminated(tag("("), gap);
+    let close_paren = terminated(tag(")"), opt(gap));
+    let parse_id_and_gap = terminated(parse_id, opt(gap));
+    let (input, opt_id) = opt(delimited(open_paren, parse_id_and_gap, close_paren))(input)?;
+
+    // Remove any blank space, in case there was any after the optional ')':
+    let (input, _) = opt(gap)(input)?;
+
+    let (input, opt_catch_do) = opt(terminated(tag("do"), gap))(input)?;
+    let has_catch_do_keyword = opt_catch_do.is_some();
+
+    let (input, catch_exprs) = parse_exprs(input)?;
+
+    // Remove any blank space, in the case there is any:
+    let (input, _) = opt(gap)(input)?;
+
+    let (input, opt_catch_end) = opt(terminated(tag("end"), opt(gap)))(input)?;
+    let has_catch_end_keyword = opt_catch_end.is_some();
+
+    if (has_catch_end_keyword && !has_catch_do_keyword) {
+        todo!();
+    }
+
+    let try_do_block = Expr::new_do_block(DoBlock::new(try_exprs));
+    let catch_do_block = Expr::new_do_block(DoBlock::new(catch_exprs));
+    let try_catch = TryCatch::new(try_do_block, opt_id, catch_do_block);
+    Ok((input, try_catch))
+}
+
+fn gap(input: &str) -> IResult<&str, ()> {
+    let (input, _) = many1(alt((parse_multi_whitespace, parse_newline_and_whitespace)))(input)?;
+    Ok((input, ()))
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct DoBlock {
     exprs: Exprs,
 }
 
@@ -20,7 +94,8 @@ impl DoBlock {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum Expr {
+pub enum Expr {
+    DoBlock(DoBlock),
     Def {
         var_name: Id,
         expr: Box<Expr>,
@@ -28,6 +103,12 @@ enum Expr {
     Return { expr: Box<Expr> },
     Throw { expr: Box<Expr> },
     Literal(Literal),
+}
+
+impl Expr {
+    fn new_do_block(do_block: DoBlock) -> Self {
+        Self::DoBlock(do_block)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -65,7 +146,7 @@ fn parse_exprs_separator(input: &str) -> IResult<&str, ()> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct Id {
+pub struct Id {
     id_str: String
 }
 
@@ -113,7 +194,7 @@ impl Expr {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum Literal {
+pub enum Literal {
     Str(String),
 }
 
@@ -129,7 +210,7 @@ fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
     let (input, _) = many1(gap)(input)?;
 
     let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
-    let ending = preceded(gap, tag("end"));
+    let ending = preceded(many1(gap), tag("end"));
     let (input, exprs) = terminated(parse_exprs, ending)(input)?;
     let do_block = DoBlock::new(exprs);
     Ok((input, do_block))
@@ -179,6 +260,7 @@ fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
+    // TODO add do block
     alt((parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr))(input)
 }
 
@@ -217,6 +299,30 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn wrap_in_do_block(expr: Expr) -> Expr {
+        let exprs = Exprs::new(vec![expr]);
+        let do_block = DoBlock::new(exprs);
+        Expr::new_do_block(do_block)
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_single_line() {
+        let s = "try \"a\" catch \"b\"";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatch::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_single_line_with_do_end() {
+        let s = "try do \"a\" end catch do \"b\" end";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatch::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
 
     #[test]
     fn parse_do_block_works_on_single_line() {
