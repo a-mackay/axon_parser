@@ -38,8 +38,14 @@ impl Literal {
     }
 }
 
-fn parse_expr(input: &str) -> Result<Expr, ()> {
-    unimplemented!();
+fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, literal_contents) = parse_double_quoted_string_literal(input)?;
+    let expr = Expr::new_literal(Literal::str(literal_contents));
+    Ok((input, expr))
+}
+
+fn parse_expr(input: &str) -> IResult<&str, Expr> {
+    alt((parse_literal_expr, parse_return_expr))(input)
 }
 
 fn parse_whitespace(input: &str) -> IResult<&str, ()> {
@@ -49,8 +55,17 @@ fn parse_whitespace(input: &str) -> IResult<&str, ()> {
     map(many1(space_or_tab), |_| ())(input)
 }
 
-fn parse_return_expr(input: &str) -> Result<Expr, ()> {
-    unimplemented!();
+fn parse_return_keyword(input: &str) -> IResult<&str, ()> {
+    let (input, _) = tag("return")(input)?;
+    Ok((input, ()))
+}
+
+fn parse_return_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = parse_return_keyword(input)?;
+    let (input, _) = parse_whitespace(input)?;
+    let (input, expr) = parse_expr(input)?;
+    let return_expr = Expr::new_return(expr);
+    Ok((input, return_expr))
 }
 
 fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
@@ -80,9 +95,10 @@ mod tests {
     #[test]
     fn parse_expr_return_works() {
         let e = "return \"Hello\"";
+        let expect = Expr::new_return(Expr::new_literal(Literal::str("Hello")));
         assert_eq!(
             parse_expr(e).unwrap(),
-            Expr::new_return(Expr::new_literal(Literal::str("Hello")))
+            ("", expect)
         );
     }
 
