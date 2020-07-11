@@ -104,7 +104,327 @@ impl DoBlock {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+enum ComparisonOperator {
+    Equals,
+    NotEquals,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThanOrEqual,
+    GreaterThan,
+    Compare,
+}
+
+impl ComparisonOperator {
+    fn to_symbol(&self) -> &str {
+        match self {
+            Self::Equals => "==",
+            Self::NotEquals => "!=",
+            Self::LessThan => "<",
+            Self::LessThanOrEqual => "<=",
+            Self::GreaterThanOrEqual => ">=",
+            Self::GreaterThan => ">",
+            Self::Compare => "<=>",
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum UnaryExprSign {
+    Not,
+    Minus,
+}
+
+impl UnaryExprSign {
+    fn to_symbol(&self) -> &str {
+        match self {
+            Self::Not => "not",
+            Self::Minus => "-",
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct Param {
+    var_name: String,
+    default_value: Expr,
+}
+
+impl Param {
+    fn new(var_name: &str, default_value: Expr) -> Self {
+        Self {
+            var_name: var_name.to_owned(),
+            default_value,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct LambdaOne {
+    var_name: String,
+    expr: Expr,
+}
+
+impl LambdaOne {
+    fn new(var_name: &str, expr: Expr) -> Self {
+        Self {
+            var_name: var_name.to_owned(),
+            expr,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct LambdaMany {
+    params: Vec<Param>,
+    expr: Expr,
+}
+
+impl LambdaMany {
+    fn new(params: Vec<Param>, expr: Expr) -> Self {
+        Self {
+            params,
+            expr
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Lambda {
+    One(LambdaOne),
+    Many(LambdaMany),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum TermBase {
+    Var(String),
+    GroupedExpr(Box<Expr>),
+    Literal(Literal),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CallArg {
+    Expr(Expr),
+    DiscardedExpr,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct Call {
+    call_args: Vec<CallArg>,
+    lambda: Option<Lambda>,
+}
+
+impl Call {
+    fn new(call_args: Vec<CallArg>, lambda: Option<Lambda>) -> Self {
+        Self {
+            call_args,
+            lambda,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum TrailingCall {
+    Call(Call),
+    Lambda(Lambda),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct DotCall {
+    function_name: String,
+    trailing_call: Option<TrailingCall>
+}
+
+impl DotCall {
+    fn new(function_name: &str, trailing_call: Option<TrailingCall>) -> Self {
+        Self {
+            function_name: function_name.to_owned(),
+            trailing_call,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum TermChain {
+    Call(Call),
+    DotCall(DotCall),
+    Index(Box<Expr>),
+    TrapCall(String),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct TermExpr {
+    term_base: TermBase,
+    term_chain: Vec<TermChain>,
+}
+
+impl TermExpr {
+    fn new(term_base: TermBase, term_chain: Vec<TermChain>) -> Self {
+        Self {
+            term_base,
+            term_chain,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct UnaryExpr {
+    sign: UnaryExprSign,
+    term_expr: TermExpr
+}
+
+impl UnaryExpr {
+    fn new(sign: UnaryExprSign, term_expr: TermExpr) -> Self {
+        Self {
+            sign,
+            term_expr,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct OperatedUnaryExpr {
+    is_multiply: bool,
+    unary_expr: UnaryExpr,
+}
+
+impl OperatedUnaryExpr {
+    fn new(is_multiply: bool, unary_expr: UnaryExpr) -> Self {
+        Self {
+            is_multiply,
+            unary_expr,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct MultExpr {
+    first_unary_expr: UnaryExpr,
+    remaining_unary_exprs: Vec<OperatedUnaryExpr>,
+}
+
+impl MultExpr {
+    fn new(first_unary_expr: UnaryExpr, remaining_unary_exprs: Vec<OperatedUnaryExpr>) -> Self {
+        Self {
+            first_unary_expr,
+            remaining_unary_exprs,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct SignedMultExpr {
+    is_add: bool,
+    mult_expr: MultExpr,
+}
+
+impl SignedMultExpr {
+    fn new(is_add: bool, mult_expr: MultExpr) -> Self {
+        Self {
+            is_add,
+            mult_expr,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct AddExpr {
+    first_mult_expr: MultExpr,
+    remaining_mult_exprs: Vec<SignedMultExpr>,
+}
+
+impl AddExpr {
+    fn new(first_mult_expr: MultExpr, remaining_mult_exprs: Vec<SignedMultExpr>) -> Self {
+        Self {
+            first_mult_expr,
+            remaining_mult_exprs,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct RangeExpr {
+    left_add_expr: AddExpr,
+    right_add_expr: AddExpr,
+}
+
+impl RangeExpr {
+    fn new(left_add_expr: AddExpr, right_add_expr: AddExpr) -> Self {
+        Self {
+            left_add_expr,
+            right_add_expr,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ComparedRangeExpr {
+    operator: ComparisonOperator,
+    range_expr: RangeExpr,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CompareExpr {
+    first_range_expr: RangeExpr,
+    compared_range_exprs: Vec<ComparedRangeExpr>,
+}
+
+impl CompareExpr {
+    fn new(first_range_expr: RangeExpr, compared_range_exprs: Vec<ComparedRangeExpr>) -> Self {
+        Self {
+            first_range_expr,
+            compared_range_exprs,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CondAndExpr {
+    first_compare_expr: CompareExpr,
+    remaining_compare_exprs: Vec<CompareExpr>,
+}
+
+impl CondAndExpr {
+    fn new(first: CompareExpr, remaining: Vec<CompareExpr>) -> Self {
+        Self {
+            first_compare_expr: first,
+            remaining_compare_exprs: remaining,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CondOrExpr {
+    first_cond_and_expr: CondAndExpr,
+    remaining_cond_and_exprs: Vec<CondAndExpr>,
+}
+
+impl CondOrExpr {
+    fn new(first: CondAndExpr, remaining: Vec<CondAndExpr>) -> Self {
+        Self {
+            first_cond_and_expr: first,
+            remaining_cond_and_exprs: remaining,
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct AssignExpr {
+    cond_or: CondOrExpr,
+    assign: Option<Box<AssignExpr>>,
+}
+
+impl AssignExpr {
+    fn new (cond_or: CondOrExpr, assign: Option<AssignExpr>) -> Self {
+        Self {
+            cond_or,
+            assign: assign.map(|a| Box::new(a)),
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub enum Expr {
+    Assign(AssignExpr),
     DoBlock(DoBlock),
     Def { var_name: Id, expr: Box<Expr> },
     Return { expr: Box<Expr> },
@@ -434,7 +754,7 @@ fn parse_number_literal_expr(input: &str) -> IResult<&str, Expr> {
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_try_catch_expr,
-        parse_literal_expr,
+        parse_literal_expr, // TODO Axon grammar says literals are parsed in <assignExpr>
         parse_return_expr,
         parse_throw_expr,
         parse_def_expr,
