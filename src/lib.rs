@@ -1,10 +1,10 @@
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
-    character::complete::{alphanumeric0, none_of, one_of},
-    combinator::{cond, opt, map},
+    character::complete::{alphanumeric0, digit1, none_of, one_of},
+    combinator::{map, opt},
     multi::{many0, many1},
-    sequence::{delimited, separated_pair, terminated, preceded},
+    sequence::{delimited, pair, preceded, terminated},
     IResult,
 };
 
@@ -44,7 +44,7 @@ fn parse_try_catch(input: &str) -> IResult<&str, TryCatchBlock> {
     let (input, opt_try_end) = opt(terminated(tag("end"), gap))(input)?;
     let has_try_end_keyword = opt_try_end.is_some();
 
-    if (has_try_end_keyword && !has_try_do_keyword) {
+    if has_try_end_keyword && !has_try_do_keyword {
         todo!();
     }
 
@@ -56,7 +56,8 @@ fn parse_try_catch(input: &str) -> IResult<&str, TryCatchBlock> {
     let open_paren = terminated(tag("("), gap);
     let close_paren = terminated(tag(")"), opt(gap));
     let parse_id_and_gap = terminated(parse_id, opt(gap));
-    let (input, opt_id) = opt(delimited(open_paren, parse_id_and_gap, close_paren))(input)?;
+    let (input, opt_id) =
+        opt(delimited(open_paren, parse_id_and_gap, close_paren))(input)?;
 
     // Remove any blank space, in case there was any after the optional ')':
     let (input, _) = opt(gap)(input)?;
@@ -72,7 +73,7 @@ fn parse_try_catch(input: &str) -> IResult<&str, TryCatchBlock> {
     let (input, opt_catch_end) = opt(terminated(tag("end"), opt(gap)))(input)?;
     let has_catch_end_keyword = opt_catch_end.is_some();
 
-    if (has_catch_end_keyword && !has_catch_do_keyword) {
+    if has_catch_end_keyword && !has_catch_do_keyword {
         todo!();
     }
 
@@ -83,7 +84,10 @@ fn parse_try_catch(input: &str) -> IResult<&str, TryCatchBlock> {
 }
 
 fn gap(input: &str) -> IResult<&str, ()> {
-    let (input, _) = many1(alt((parse_multi_whitespace, parse_newline_and_whitespace)))(input)?;
+    let (input, _) = many1(alt((
+        parse_multi_whitespace,
+        parse_newline_and_whitespace,
+    )))(input)?;
     Ok((input, ()))
 }
 
@@ -101,10 +105,7 @@ impl DoBlock {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Expr {
     DoBlock(DoBlock),
-    Def {
-        var_name: Id,
-        expr: Box<Expr>,
-    },
+    Def { var_name: Id, expr: Box<Expr> },
     Return { expr: Box<Expr> },
     Throw { expr: Box<Expr> },
     TryCatch(Box<TryCatchBlock>),
@@ -134,8 +135,12 @@ impl Exprs {
 
 fn parse_exprs(input: &str) -> IResult<&str, Exprs> {
     let (input, first_expr) = parse_expr(input)?;
-    let separators = many1(alt((parse_newline_and_whitespace, parse_expr_separator_and_whitespace)));
-    let (input, mut remaining_exprs) = many0(preceded(separators, parse_expr))(input)?;
+    let separators = many1(alt((
+        parse_newline_and_whitespace,
+        parse_expr_separator_and_whitespace,
+    )));
+    let (input, mut remaining_exprs) =
+        many0(preceded(separators, parse_expr))(input)?;
     remaining_exprs.insert(0, first_expr);
     let exprs = Exprs::new(remaining_exprs);
     Ok((input, exprs))
@@ -149,15 +154,12 @@ fn parse_expr_separator_and_whitespace(input: &str) -> IResult<&str, ()> {
 }
 
 fn parse_exprs_separator(input: &str) -> IResult<&str, ()> {
-    map(
-        tag(";"),
-        |_| ()
-    )(input)
+    map(tag(";"), |_| ())(input)
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Id {
-    id_str: String
+    id_str: String,
 }
 
 impl Id {
@@ -206,11 +208,32 @@ impl Expr {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Literal {
     Str(String),
+    Number {
+        integral: String,
+        fractional: Option<String>,
+        exponent: Option<String>,
+    },
 }
 
 impl Literal {
     fn str(s: &str) -> Self {
-        Literal::Str(s.to_owned())
+        Self::Str(s.to_owned())
+    }
+
+    fn num(
+        integral: String,
+        fractional: Option<String>,
+        exponent: Option<String>,
+    ) -> Self {
+        Self::Number {
+            integral,
+            fractional,
+            exponent,
+        }
+    }
+
+    fn int(n: u32) -> Self {
+        Self::num(format!("{}", n), None, None)
     }
 }
 
@@ -233,7 +256,10 @@ fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
 
 fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
     let (input, id) = terminated(parse_id, tag(":"))(input)?;
-    let (input, _) = many0(alt((parse_multi_whitespace, parse_newline_and_whitespace)))(input)?;
+    let (input, _) = many0(alt((
+        parse_multi_whitespace,
+        parse_newline_and_whitespace,
+    )))(input)?;
     let (input, expr) = parse_expr(input)?;
     let def_expr = Expr::new_def(id, expr);
     Ok((input, def_expr))
@@ -247,10 +273,7 @@ fn parse_newline_and_whitespace(input: &str) -> IResult<&str, ()> {
 }
 
 fn parse_newline(input: &str) -> IResult<&str, ()> {
-    map(
-        tag("\n"),
-        |_| ()
-    )(input)
+    map(tag("\n"), |_| ())(input)
 }
 
 fn parse_throw_expr(input: &str) -> IResult<&str, Expr> {
@@ -262,20 +285,56 @@ fn parse_throw_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_throw_keyword(input: &str) -> IResult<&str, ()> {
-    map(
-        tag("throw"),
-        |_| ()
-    )(input)
+    map(tag("throw"), |_| ())(input)
 }
 
 fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, literal_contents) = parse_double_quoted_string_literal(input)?;
-    let expr = Expr::new_literal(Literal::str(literal_contents));
+    alt((
+        parse_double_quoted_string_literal_expr,
+        parse_number_literal_expr,
+    ))(input)
+}
+
+fn parse_number_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, opt_integral_negation) = opt(tag("-"))(input)?;
+    let is_integral_negative = opt_integral_negation.is_some();
+
+    // Remove any blank space:
+    let (input, _) = opt(gap)(input)?;
+
+    let (input, integral) = digit1(input)?;
+    let (input, opt_fractional) = opt(preceded(tag("."), digit1))(input)?;
+    let exponent_num = pair(opt(tag("-")), digit1);
+    let (input, exponent_info) =
+        opt(preceded(alt((tag("e"), tag("E"))), exponent_num))(input)?;
+
+    let integral = if is_integral_negative {
+        format!("-{}", integral)
+    } else {
+        integral.to_owned()
+    };
+
+    let opt_fractional = opt_fractional.map(|f| f.to_owned());
+    let opt_exponent = match exponent_info {
+        Some((None, exponent)) => Some(exponent.to_owned()),
+        Some((Some(_), exponent)) => Some(format!("-{}", exponent)),
+        None => None,
+    };
+
+    let lit = Literal::num(integral, opt_fractional, opt_exponent);
+    let expr = Expr::new_literal(lit);
     Ok((input, expr))
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    alt((parse_try_catch_expr, parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr, parse_do_block_expr))(input)
+    alt((
+        parse_try_catch_expr,
+        parse_literal_expr,
+        parse_return_expr,
+        parse_throw_expr,
+        parse_def_expr,
+        parse_do_block_expr,
+    ))(input)
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
@@ -302,6 +361,12 @@ fn parse_return_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, return_expr))
 }
 
+fn parse_double_quoted_string_literal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, string_contents) = parse_double_quoted_string_literal(input)?;
+    let expr = Expr::new_literal(Literal::str(string_contents));
+    Ok((input, expr))
+}
+
 fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
     let esc = escaped(none_of("\\\""), '\\', one_of(r#"fnrtv\"$"#));
     let esc_or_empty = alt((esc, tag("")));
@@ -314,6 +379,68 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn parse_number_literal_works_for_basic_num() {
+        let s = "123";
+        let expected =
+            Expr::new_literal(Literal::num("123".to_owned(), None, None));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+
+        let s = "-123";
+        let expected =
+            Expr::new_literal(Literal::num("-123".to_owned(), None, None));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+    }
+
+    #[test]
+    fn parse_number_literal_works_for_basic_decimal() {
+        let s = "123.456";
+        let expected = Expr::new_literal(Literal::num(
+            "123".to_owned(),
+            Some("456".to_owned()),
+            None,
+        ));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+
+        let s = "-123.456";
+        let expected = Expr::new_literal(Literal::num(
+            "-123".to_owned(),
+            Some("456".to_owned()),
+            None,
+        ));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+    }
+
+    #[test]
+    fn parse_number_literal_works_for_exponent() {
+        let s = "123e-10";
+        let expected = Expr::new_literal(Literal::num(
+            "123".to_owned(),
+            None,
+            Some("-10".to_owned()),
+        ));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+
+        let s = "-123.456E99";
+        let expected = Expr::new_literal(Literal::num(
+            "-123".to_owned(),
+            Some("456".to_owned()),
+            Some("99".to_owned()),
+        ));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+    }
+
+    #[test]
+    fn parse_number_literal_works_for_a_mess() {
+        let s = "-  \n \t 0.0E-0";
+        let expected = Expr::new_literal(Literal::num(
+            "-0".to_owned(),
+            Some("0".to_owned()),
+            Some("-0".to_owned()),
+        ));
+        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+    }
+
     fn wrap_in_do_block(expr: Expr) -> Expr {
         let exprs = Exprs::new(vec![expr]);
         let do_block = DoBlock::new(exprs);
@@ -322,55 +449,73 @@ mod tests {
 
     #[test]
     fn parse_try_catch_works_on_single_line() {
-        let s = "try \"a\" catch \"b\"";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let s = "try 1 catch 2";
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::int(1)));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::int(2)));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_try_catch_works_on_single_line_with_do_end() {
         let s = "try do \"a\" end catch do \"b\" end";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_try_catch_works_on_single_line_with_do_but_no_end() {
         let s = "try do \"a\" catch do \"b\"";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_try_catch_works_on_multi_lines() {
         let s = "try \n \"a\" \ncatch\n\"b\"";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_try_catch_works_on_multi_lines_with_do_end() {
         let s = "try do\n\"a\"end\ncatch do\n\"b\"end";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_try_catch_works_on_multi_lines_with_do_but_no_end() {
         let s = "try do\n\"a\"\ncatch do\n\"b\"";
-        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
-        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
-        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        let expect_try_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr =
+            wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect =
+            TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
@@ -379,10 +524,12 @@ mod tests {
         let s = "try do   \n   \"a\"   \n\n\t\n   \"b\" \n end \ncatch do\n\"c\"\n\"d\"    \t";
         let a = Expr::new_literal(Literal::str("a"));
         let b = Expr::new_literal(Literal::str("b"));
-        let try_exprs = Expr::new_do_block(DoBlock::new(Exprs::new(vec![a, b])));
+        let try_exprs =
+            Expr::new_do_block(DoBlock::new(Exprs::new(vec![a, b])));
         let c = Expr::new_literal(Literal::str("c"));
         let d = Expr::new_literal(Literal::str("d"));
-        let catch_exprs = Expr::new_do_block(DoBlock::new(Exprs::new(vec![c, d])));
+        let catch_exprs =
+            Expr::new_do_block(DoBlock::new(Exprs::new(vec![c, d])));
         let expect = TryCatchBlock::new(try_exprs, None, catch_exprs);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
@@ -409,7 +556,8 @@ mod tests {
     #[test]
     fn parse_exprs_works_for_single_expr() {
         let s = "return \"test\"";
-        let expect_expr = Expr::new_return(Expr::new_literal(Literal::str("test")));
+        let expect_expr =
+            Expr::new_return(Expr::new_literal(Literal::str("test")));
         let expect = Exprs::new(vec![expect_expr]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect))
     }
@@ -417,20 +565,26 @@ mod tests {
     #[test]
     fn parse_exprs_works_for_semicolon_separated_exprs() {
         let s = "return \"one\"; return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
 
         let s = "return \"one\";return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
 
         let s = "return \"one\"  \t ; \t return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
     }
@@ -438,28 +592,36 @@ mod tests {
     #[test]
     fn parse_exprs_works_for_newline_separated_exprs() {
         let s = "return \"one\"\nreturn \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
 
         let s = "return \"one\"  \t  \n  \t return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
     }
     #[test]
     fn parse_exprs_works_for_multi_newline_separated_exprs() {
         let s = "return \"one\"\n\n\n   return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
 
         let s = "return \"one\" \n \t  \n\n  \t return \"two\"";
-        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
-        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect_expr1 =
+            Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 =
+            Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
     }
@@ -510,53 +672,42 @@ mod tests {
     fn parse_expr_def_works() {
         let e = "x: \"Hello\"";
         let expect_id = Id::new("x");
-        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
-        assert_eq!(
-            parse_expr(e).unwrap(),
-            ("", expect)
-        );
+        let expect =
+            Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(parse_expr(e).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_expr_def_works_with_no_separating_whitespace() {
         let e = "x:\"Hello\"";
         let expect_id = Id::new("x");
-        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
-        assert_eq!(
-            parse_expr(e).unwrap(),
-            ("", expect)
-        );
+        let expect =
+            Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(parse_expr(e).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_expr_def_works_with_many_separating_whitespace() {
         let e = "x: \n  \t   \"Hello\"";
         let expect_id = Id::new("x");
-        let expect = Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
-        assert_eq!(
-            parse_expr(e).unwrap(),
-            ("", expect)
-        );
+        let expect =
+            Expr::new_def(expect_id, Expr::new_literal(Literal::str("Hello")));
+        assert_eq!(parse_expr(e).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_expr_return_works() {
         let e = "return \"Hello\"";
         let expect = Expr::new_return(Expr::new_literal(Literal::str("Hello")));
-        assert_eq!(
-            parse_expr(e).unwrap(),
-            ("", expect)
-        );
+        assert_eq!(parse_expr(e).unwrap(), ("", expect));
     }
 
     #[test]
     fn parse_expr_throw_works() {
         let e = "throw \"Some error\"";
-        let expect = Expr::new_throw(Expr::new_literal(Literal::str("Some error")));
-        assert_eq!(
-            parse_expr(e).unwrap(),
-            ("", expect)
-        );
+        let expect =
+            Expr::new_throw(Expr::new_literal(Literal::str("Some error")));
+        assert_eq!(parse_expr(e).unwrap(), ("", expect));
     }
 
     #[test]
