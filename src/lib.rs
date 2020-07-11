@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
     character::complete::{alphanumeric0, none_of, one_of},
-    combinator::map,
+    combinator::{opt, map},
     multi::{many0, many1},
     sequence::{delimited, separated_pair, terminated, preceded},
     IResult,
@@ -51,9 +51,9 @@ fn parse_exprs(input: &str) -> IResult<&str, Exprs> {
 }
 
 fn parse_expr_separator_and_whitespace(input: &str) -> IResult<&str, ()> {
-    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = opt(parse_multi_whitespace)(input)?;
     let (input, _) = parse_exprs_separator(input)?;
-    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = opt(parse_multi_whitespace)(input)?;
     Ok((input, ()))
 }
 
@@ -123,18 +123,30 @@ impl Literal {
     }
 }
 
+fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
+    let (input, _) = tag("do")(input)?;
+    let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
+    let (input, _) = many1(gap)(input)?;
+
+    let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
+    let ending = preceded(gap, tag("end"));
+    let (input, exprs) = terminated(parse_exprs, ending)(input)?;
+    let do_block = DoBlock::new(exprs);
+    Ok((input, do_block))
+}
+
 fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
     let (input, id) = terminated(parse_id, tag(":"))(input)?;
-    let (input, _) = many0(alt((parse_whitespace, parse_newline_and_whitespace)))(input)?;
+    let (input, _) = many0(alt((parse_multi_whitespace, parse_newline_and_whitespace)))(input)?;
     let (input, expr) = parse_expr(input)?;
     let def_expr = Expr::new_def(id, expr);
     Ok((input, def_expr))
 }
 
 fn parse_newline_and_whitespace(input: &str) -> IResult<&str, ()> {
-    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = opt(parse_multi_whitespace)(input)?;
     let (input, _) = parse_newline(input)?;
-    let (input, _) = many0(parse_whitespace)(input)?;
+    let (input, _) = opt(parse_multi_whitespace)(input)?;
     Ok((input, ()))
 }
 
@@ -147,7 +159,7 @@ fn parse_newline(input: &str) -> IResult<&str, ()> {
 
 fn parse_throw_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = parse_throw_keyword(input)?;
-    let (input, _) = parse_whitespace(input)?;
+    let (input, _) = parse_multi_whitespace(input)?; // TODO newlines here?
     let (input, expr) = parse_expr(input)?;
     let throw_expr = Expr::new_throw(expr);
     Ok((input, throw_expr))
@@ -170,11 +182,15 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((parse_literal_expr, parse_return_expr, parse_throw_expr, parse_def_expr))(input)
 }
 
-fn parse_whitespace(input: &str) -> IResult<&str, ()> {
+fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
     let space = tag(" ");
     let tab = tag("\t");
-    let space_or_tab = alt((space, tab));
-    map(many1(space_or_tab), |_| ())(input)
+    let (input, _) = alt((space, tab))(input)?;
+    Ok((input, ()))
+}
+
+fn parse_multi_whitespace(input: &str) -> IResult<&str, ()> {
+    map(many1(parse_single_whitespace), |_| ())(input)
 }
 
 fn parse_return_keyword(input: &str) -> IResult<&str, ()> {
@@ -184,7 +200,7 @@ fn parse_return_keyword(input: &str) -> IResult<&str, ()> {
 
 fn parse_return_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = parse_return_keyword(input)?;
-    let (input, _) = parse_whitespace(input)?;
+    let (input, _) = parse_multi_whitespace(input)?; // TODO newlines here?
     let (input, expr) = parse_expr(input)?;
     let return_expr = Expr::new_return(expr);
     Ok((input, return_expr))
@@ -201,6 +217,25 @@ fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_do_block_works_on_single_line() {
+        let s = "do \"Hello\" end";
+        let expect_expr = Expr::Literal(Literal::Str("Hello".to_owned()));
+        let expect_exprs = Exprs::new(vec![expect_expr]);
+        let expect = DoBlock::new(expect_exprs);
+        assert_eq!(parse_do_block(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_do_block_works_on_multiple_lines() {
+        let s = "do \"Hello\" \n \"World\" end";
+        let expect_expr1 = Expr::Literal(Literal::Str("Hello".to_owned()));
+        let expect_expr2 = Expr::Literal(Literal::Str("World".to_owned()));
+        let expect_exprs = Exprs::new(vec![expect_expr1, expect_expr2]);
+        let expect = DoBlock::new(expect_exprs);
+        assert_eq!(parse_do_block(s).unwrap(), ("", expect));
+    }
 
     #[test]
     fn parse_exprs_works_for_single_expr() {
@@ -279,13 +314,13 @@ mod tests {
     #[test]
     fn parse_whitespace_works() {
         let s = " afterWhitespace";
-        assert_eq!(parse_whitespace(s).unwrap(), ("afterWhitespace", ()));
+        assert_eq!(parse_multi_whitespace(s).unwrap(), ("afterWhitespace", ()));
 
         let s = "\tafterWhitespace";
-        assert_eq!(parse_whitespace(s).unwrap(), ("afterWhitespace", ()));
+        assert_eq!(parse_multi_whitespace(s).unwrap(), ("afterWhitespace", ()));
 
         let s = " \t  \tafterWhitespace";
-        assert_eq!(parse_whitespace(s).unwrap(), ("afterWhitespace", ()));
+        assert_eq!(parse_multi_whitespace(s).unwrap(), ("afterWhitespace", ()));
     }
 
     #[test]
