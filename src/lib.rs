@@ -134,7 +134,7 @@ impl Exprs {
 
 fn parse_exprs(input: &str) -> IResult<&str, Exprs> {
     let (input, first_expr) = parse_expr(input)?;
-    let separators = alt((parse_newline_and_whitespace, parse_expr_separator_and_whitespace));
+    let separators = many1(alt((parse_newline_and_whitespace, parse_expr_separator_and_whitespace)));
     let (input, mut remaining_exprs) = many0(preceded(separators, parse_expr))(input)?;
     remaining_exprs.insert(0, first_expr);
     let exprs = Exprs::new(remaining_exprs);
@@ -349,10 +349,41 @@ mod tests {
 
     #[test]
     fn parse_try_catch_works_on_multi_lines() {
-        let s = "try \"a\" catch \"b\"";
+        let s = "try \n \"a\" \ncatch\n\"b\"";
         let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
         let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
         let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_multi_lines_with_do_end() {
+        let s = "try do\n\"a\"end\ncatch do\n\"b\"end";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_multi_lines_with_do_but_no_end() {
+        let s = "try do\n\"a\"\ncatch do\n\"b\"";
+        let expect_try_expr = wrap_in_do_block(Expr::new_literal(Literal::str("a")));
+        let expect_catch_expr = wrap_in_do_block(Expr::new_literal(Literal::str("b")));
+        let expect = TryCatchBlock::new(expect_try_expr, None, expect_catch_expr);
+        assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
+    }
+
+    #[test]
+    fn parse_try_catch_works_on_a_mixed_bag() {
+        let s = "try do   \n   \"a\"   \n\n\t\n   \"b\" \n end \ncatch do\n\"c\"\n\"d\"    \t";
+        let a = Expr::new_literal(Literal::str("a"));
+        let b = Expr::new_literal(Literal::str("b"));
+        let try_exprs = Expr::new_do_block(DoBlock::new(Exprs::new(vec![a, b])));
+        let c = Expr::new_literal(Literal::str("c"));
+        let d = Expr::new_literal(Literal::str("d"));
+        let catch_exprs = Expr::new_do_block(DoBlock::new(Exprs::new(vec![c, d])));
+        let expect = TryCatchBlock::new(try_exprs, None, catch_exprs);
         assert_eq!(parse_try_catch(s).unwrap(), ("", expect));
     }
 
@@ -413,6 +444,20 @@ mod tests {
         assert_eq!(parse_exprs(s).unwrap(), ("", expect));
 
         let s = "return \"one\"  \t  \n  \t return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+    }
+    #[test]
+    fn parse_exprs_works_for_multi_newline_separated_exprs() {
+        let s = "return \"one\"\n\n\n   return \"two\"";
+        let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
+        let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
+        let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
+        assert_eq!(parse_exprs(s).unwrap(), ("", expect));
+
+        let s = "return \"one\" \n \t  \n\n  \t return \"two\"";
         let expect_expr1 = Expr::new_return(Expr::new_literal(Literal::str("one")));
         let expect_expr2 = Expr::new_return(Expr::new_literal(Literal::str("two")));
         let expect = Exprs::new(vec![expect_expr1, expect_expr2]);
