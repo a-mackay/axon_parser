@@ -202,10 +202,7 @@ struct LambdaMany {
 
 impl LambdaMany {
     fn new(params: Vec<Param>, expr: Expr) -> Self {
-        Self {
-            params,
-            expr
-        }
+        Self { params, expr }
     }
 }
 
@@ -217,7 +214,7 @@ enum Lambda {
 
 #[derive(Debug, Eq, PartialEq)]
 enum TermBase {
-    Var(String),
+    Var(Id),
     GroupedExpr(Box<Expr>),
     Literal(Literal),
 }
@@ -236,10 +233,7 @@ struct Call {
 
 impl Call {
     fn new(call_args: Vec<CallArg>, lambda: Option<Lambda>) -> Self {
-        Self {
-            call_args,
-            lambda,
-        }
+        Self { call_args, lambda }
     }
 }
 
@@ -252,7 +246,7 @@ enum TrailingCall {
 #[derive(Debug, Eq, PartialEq)]
 struct DotCall {
     function_name: String,
-    trailing_call: Option<TrailingCall>
+    trailing_call: Option<TrailingCall>,
 }
 
 impl DotCall {
@@ -290,15 +284,12 @@ impl TermExpr {
 #[derive(Debug, Eq, PartialEq)]
 struct UnaryExpr {
     sign: UnaryExprSign,
-    term_expr: TermExpr
+    term_expr: TermExpr,
 }
 
 impl UnaryExpr {
     fn new(sign: UnaryExprSign, term_expr: TermExpr) -> Self {
-        Self {
-            sign,
-            term_expr,
-        }
+        Self { sign, term_expr }
     }
 }
 
@@ -324,7 +315,10 @@ struct MultExpr {
 }
 
 impl MultExpr {
-    fn new(first_unary_expr: UnaryExpr, remaining_operated_unary_exprs: Vec<OperatedUnaryExpr>) -> Self {
+    fn new(
+        first_unary_expr: UnaryExpr,
+        remaining_operated_unary_exprs: Vec<OperatedUnaryExpr>,
+    ) -> Self {
         Self {
             first_unary_expr,
             remaining_operated_unary_exprs,
@@ -340,10 +334,7 @@ struct SignedMultExpr {
 
 impl SignedMultExpr {
     fn new(is_add: bool, mult_expr: MultExpr) -> Self {
-        Self {
-            is_add,
-            mult_expr,
-        }
+        Self { is_add, mult_expr }
     }
 }
 
@@ -354,7 +345,10 @@ struct AddExpr {
 }
 
 impl AddExpr {
-    fn new(first_mult_expr: MultExpr, remaining_signed_mult_exprs: Vec<SignedMultExpr>) -> Self {
+    fn new(
+        first_mult_expr: MultExpr,
+        remaining_signed_mult_exprs: Vec<SignedMultExpr>,
+    ) -> Self {
         Self {
             first_mult_expr,
             remaining_signed_mult_exprs,
@@ -399,7 +393,10 @@ pub struct CompareExpr {
 }
 
 impl CompareExpr {
-    fn new(first_range_expr: RangeExpr, compared_range_exprs: Vec<ComparedRangeExpr>) -> Self {
+    fn new(
+        first_range_expr: RangeExpr,
+        compared_range_exprs: Vec<ComparedRangeExpr>,
+    ) -> Self {
         Self {
             first_range_expr,
             compared_range_exprs,
@@ -444,7 +441,7 @@ pub struct AssignExpr {
 }
 
 impl AssignExpr {
-    fn new (cond_or: CondOrExpr, assign: Option<AssignExpr>) -> Self {
+    fn new(cond_or: CondOrExpr, assign: Option<AssignExpr>) -> Self {
         Self {
             cond_or,
             assign: assign.map(|a| Box::new(a)),
@@ -529,8 +526,12 @@ impl Id {
 fn parse_id(input: &str) -> IResult<&str, Id> {
     let lowercase_chars = "abcdefghijklmnopqrstuvwxyz";
     let (input, first_char) = one_of(lowercase_chars)(input)?;
-    let (input, remaining_chars) = alphanumeric0(input)?;
-    let id_str = format!("{}{}", first_char, remaining_chars);
+    let chars = one_of(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_",
+    );
+    let (input, remaining_chars) = many0(chars)(input)?;
+    let remaining_str: String = remaining_chars.into_iter().collect();
+    let id_str = format!("{}{}", first_char, remaining_str);
     let id = Id::new(&id_str);
     Ok((input, id))
 }
@@ -623,7 +624,7 @@ impl Month {
     pub fn new(year: i32, month: u32) -> Option<Self> {
         match month {
             (1..=12) => Some(Self { year, month }),
-            _ => None
+            _ => None,
         }
     }
 
@@ -689,10 +690,7 @@ fn parse_throw_keyword(input: &str) -> IResult<&str, ()> {
 }
 
 fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
-    map(
-        parse_literal,
-        |literal| Expr::new_literal(literal),
-    )(input)
+    map(parse_literal, |literal| Expr::new_literal(literal))(input)
     // alt((
     //     parse_double_quoted_string_literal_expr,
     //     parse_number_literal_expr,
@@ -718,7 +716,9 @@ fn parse_literal(input: &str) -> IResult<&str, Literal> {
 
 fn parse_ref_literal(input: &str) -> IResult<&str, Literal> {
     let (input, _) = tag("@")(input)?;
-    let ref_char = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_:.~-");
+    let ref_char = one_of(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_:.~-",
+    );
     let (input, ref_chars) = many1(ref_char)(input)?;
     let ref_str = ref_chars.into_iter().collect::<String>().to_owned();
     let ref_str = format!("@{}", ref_str);
@@ -733,9 +733,18 @@ fn parse_month_literal(input: &str) -> IResult<&str, Literal> {
     let parse_year = terminated(count(valid_digit, 4), tag("-"));
     let parse_month = count(valid_digit, 2);
     let (input, (year, month)) = pair(parse_year, parse_month)(input)?;
-    let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
-    let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
-    let year_month = Month::new(year, month).expect("Month literal should be valid");
+    let year = year
+        .into_iter()
+        .collect::<String>()
+        .parse()
+        .expect("Year should be a valid int");
+    let month = month
+        .into_iter()
+        .collect::<String>()
+        .parse()
+        .expect("Month should be a valid int");
+    let year_month =
+        Month::new(year, month).expect("Month literal should be valid");
     Ok((input, Literal::month(year_month)))
 }
 
@@ -744,20 +753,30 @@ fn parse_date_literal(input: &str) -> IResult<&str, Literal> {
     let parse_month = terminated(count(valid_digit, 2), tag("-"));
     let parse_day = count(valid_digit, 2);
 
-    let (input, (year, month, day)) = tuple((parse_year, parse_month, parse_day))(input)?;
+    let (input, (year, month, day)) =
+        tuple((parse_year, parse_month, parse_day))(input)?;
 
-    let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
-    let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
-    let day = day.into_iter().collect::<String>().parse().expect("Day should be a valid int");
+    let year = year
+        .into_iter()
+        .collect::<String>()
+        .parse()
+        .expect("Year should be a valid int");
+    let month = month
+        .into_iter()
+        .collect::<String>()
+        .parse()
+        .expect("Month should be a valid int");
+    let day = day
+        .into_iter()
+        .collect::<String>()
+        .parse()
+        .expect("Day should be a valid int");
 
     Ok((input, Literal::date(year, month, day)))
 }
 
 fn parse_null_literal(input: &str) -> IResult<&str, Literal> {
-    map(
-        tag("null"),
-        |_| Literal::Null
-    )(input)
+    map(tag("null"), |_| Literal::Null)(input)
 }
 
 fn parse_bool_literal(input: &str) -> IResult<&str, Literal> {
@@ -813,17 +832,15 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_assignexpr_expr(input: &str) -> IResult<&str, Expr> {
-    map(
-        parse_assignexpr,
-        |assignexpr| Expr::new_assign(assignexpr)
-    )(input)
+    map(parse_assignexpr, |assignexpr| Expr::new_assign(assignexpr))(input)
 }
 
 fn parse_assignexpr(input: &str) -> IResult<&str, AssignExpr> {
     let (input, first_cond_or_expr) = parse_condorexpr(input)?;
     let (input, _) = opt(gap)(input)?;
     let parse_equals = terminated(tag("="), opt(gap));
-    let mut parse_next_cond_or_expr = opt(preceded(parse_equals, parse_assignexpr));
+    let mut parse_next_cond_or_expr =
+        opt(preceded(parse_equals, parse_assignexpr));
     let (input, opt_cond_or_expr) = parse_next_cond_or_expr(input)?;
 
     let assign_expr = AssignExpr::new(first_cond_or_expr, opt_cond_or_expr);
@@ -835,7 +852,8 @@ fn parse_condorexpr(input: &str) -> IResult<&str, CondOrExpr> {
     let parse_and = delimited(opt(gap), tag("and"), opt(gap));
     let and_another_cond = preceded(parse_and, parse_condandexpr);
     let (input, remaining_cond_and_exprs) = many0(and_another_cond)(input)?;
-    let cond_or_expr = CondOrExpr::new(first_cond_and_expr, remaining_cond_and_exprs);
+    let cond_or_expr =
+        CondOrExpr::new(first_cond_and_expr, remaining_cond_and_exprs);
     Ok((input, cond_or_expr))
 }
 
@@ -844,7 +862,8 @@ fn parse_condandexpr(input: &str) -> IResult<&str, CondAndExpr> {
     let parse_or = delimited(opt(gap), tag("or"), opt(gap));
     let or_another_cond = preceded(parse_or, parse_compareexpr);
     let (input, remaining_compare_exprs) = many0(or_another_cond)(input)?;
-    let cond_and_expr = CondAndExpr::new(first_compare_expr, remaining_compare_exprs);
+    let cond_and_expr =
+        CondAndExpr::new(first_compare_expr, remaining_compare_exprs);
     Ok((input, cond_and_expr))
 }
 
@@ -869,7 +888,8 @@ fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
     let (i, operator) = terminated(operators, opt(gap))(i)?;
     let (i, range_expr) = parse_rangeexpr(i)?;
 
-    let comparison_op = ComparisonOperator::from_str(operator).expect("Unimplemented comparison operator");
+    let comparison_op = ComparisonOperator::from_str(operator)
+        .expect("Unimplemented comparison operator");
     let comp_range_expr = ComparedRangeExpr::new(comparison_op, range_expr);
     Ok((i, comp_range_expr))
 }
@@ -904,8 +924,10 @@ fn parse_signedmultexpr(i: &str) -> IResult<&str, SignedMultExpr> {
 fn parse_multexpr(i: &str) -> IResult<&str, MultExpr> {
     let (i, first_unary_expr) = parse_unaryexpr(i)?;
     let (i, _) = opt(gap)(i)?;
-    let (i, remaining_operated_unary_exprs) = many0(parse_operatedunaryexprs)(i)?;
-    let mult_expr = MultExpr::new(first_unary_expr, remaining_operated_unary_exprs);
+    let (i, remaining_operated_unary_exprs) =
+        many0(parse_operatedunaryexprs)(i)?;
+    let mult_expr =
+        MultExpr::new(first_unary_expr, remaining_operated_unary_exprs);
     Ok((i, mult_expr))
 }
 
@@ -925,7 +947,8 @@ fn parse_unaryexpr(i: &str) -> IResult<&str, UnaryExpr> {
     let (i, sign) = alt((parse_minus, parse_not))(i)?;
     let (i, term_expr) = parse_termexpr(i)?;
 
-    let unary_expr_sign = UnaryExprSign::from_str(sign).expect("Unimplemented unary expression sign");
+    let unary_expr_sign = UnaryExprSign::from_str(sign)
+        .expect("Unimplemented unary expression sign");
     let unary_expr = UnaryExpr::new(unary_expr_sign, term_expr);
     Ok((i, unary_expr))
 }
@@ -947,7 +970,7 @@ fn parse_term_base(i: &str) -> IResult<&str, TermBase> {
         let term_base = TermBase::Literal(literal);
         return Ok((i, term_base));
     };
-    unimplemented!()
+    map(parse_id, |id| TermBase::Var(id))(i)
 }
 
 fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
@@ -958,7 +981,7 @@ fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
-    unimplemented!()
+    todo!()
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
@@ -1013,7 +1036,8 @@ mod tests {
     #[test]
     fn parse_ref_literal_works_for_uncommon_ref() {
         let s = "@p:some_Project:r:1e85e02f-0459cf96~_-.:";
-        let expected = Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:");
+        let expected =
+            Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:");
         assert_eq!(parse_ref_literal(s).unwrap(), ("", expected));
     }
 
@@ -1062,43 +1086,32 @@ mod tests {
     #[test]
     fn parse_number_literal_works_for_basic_num() {
         let s = "123";
-        let expected =
-            Literal::num("123".to_owned(), None, None);
+        let expected = Literal::num("123".to_owned(), None, None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123";
-        let expected =
-            Literal::num("-123".to_owned(), None, None);
+        let expected = Literal::num("-123".to_owned(), None, None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_basic_decimal() {
         let s = "123.456";
-        let expected = Literal::num(
-            "123".to_owned(),
-            Some("456".to_owned()),
-            None,
-        );
+        let expected =
+            Literal::num("123".to_owned(), Some("456".to_owned()), None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456";
-        let expected = Literal::num(
-            "-123".to_owned(),
-            Some("456".to_owned()),
-            None,
-        );
+        let expected =
+            Literal::num("-123".to_owned(), Some("456".to_owned()), None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_exponent() {
         let s = "123e-10";
-        let expected = Literal::num(
-            "123".to_owned(),
-            None,
-            Some("-10".to_owned()),
-        );
+        let expected =
+            Literal::num("123".to_owned(), None, Some("-10".to_owned()));
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456E99";
@@ -1318,6 +1331,10 @@ mod tests {
 
         let s = "v0";
         let expected = Id::new("v0");
+        assert_eq!(parse_id(s).unwrap(), ("", expected));
+
+        let s = "with_underscore";
+        let expected = Id::new("with_underscore");
         assert_eq!(parse_id(s).unwrap(), ("", expected));
     }
 
