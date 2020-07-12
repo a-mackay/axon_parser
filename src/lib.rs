@@ -716,30 +716,30 @@ fn parse_literal(input: &str) -> IResult<&str, Literal> {
     ))(input)
 }
 
-fn parse_ref_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_ref_literal(input: &str) -> IResult<&str, Literal> {
     let (input, _) = tag("@")(input)?;
     let ref_char = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_:.~-");
     let (input, ref_chars) = many1(ref_char)(input)?;
     let ref_str = ref_chars.into_iter().collect::<String>().to_owned();
     let ref_str = format!("@{}", ref_str);
-    Ok((input, Expr::new_literal(Literal::ref_lit(&ref_str))))
+    Ok((input, Literal::ref_lit(&ref_str)))
 }
 
 fn valid_digit(input: &str) -> IResult<&str, char> {
     one_of("1234567890")(input)
 }
 
-fn parse_month_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_month_literal(input: &str) -> IResult<&str, Literal> {
     let parse_year = terminated(count(valid_digit, 4), tag("-"));
     let parse_month = count(valid_digit, 2);
     let (input, (year, month)) = pair(parse_year, parse_month)(input)?;
     let year = year.into_iter().collect::<String>().parse().expect("Year should be a valid int");
     let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
     let year_month = Month::new(year, month).expect("Month literal should be valid");
-    Ok((input, Expr::new_literal(Literal::month(year_month))))
+    Ok((input, Literal::month(year_month)))
 }
 
-fn parse_date_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_date_literal(input: &str) -> IResult<&str, Literal> {
     let parse_year = terminated(count(valid_digit, 4), tag("-"));
     let parse_month = terminated(count(valid_digit, 2), tag("-"));
     let parse_day = count(valid_digit, 2);
@@ -750,27 +750,27 @@ fn parse_date_literal_expr(input: &str) -> IResult<&str, Expr> {
     let month = month.into_iter().collect::<String>().parse().expect("Month should be a valid int");
     let day = day.into_iter().collect::<String>().parse().expect("Day should be a valid int");
 
-    Ok((input, Expr::new_literal(Literal::date(year, month, day))))
+    Ok((input, Literal::date(year, month, day)))
 }
 
-fn parse_null_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_null_literal(input: &str) -> IResult<&str, Literal> {
     map(
         tag("null"),
-        |_| Expr::new_literal(Literal::Null)
+        |_| Literal::Null
     )(input)
 }
 
-fn parse_bool_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_bool_literal(input: &str) -> IResult<&str, Literal> {
     let (input, bool_str) = alt((tag("true"), tag("false")))(input)?;
     let b = match bool_str {
         "true" => true,
         "false" => false,
         _ => unreachable!(),
     };
-    Ok((input, Expr::new_literal(Literal::bool(b))))
+    Ok((input, Literal::bool(b)))
 }
 
-fn parse_number_literal_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
     let (input, opt_integral_negation) = opt(tag("-"))(input)?;
     let is_integral_negative = opt_integral_negation.is_some();
 
@@ -797,8 +797,7 @@ fn parse_number_literal_expr(input: &str) -> IResult<&str, Expr> {
     };
 
     let lit = Literal::num(integral, opt_fractional, opt_exponent);
-    let expr = Expr::new_literal(lit);
-    Ok((input, expr))
+    Ok((input, lit))
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
@@ -824,7 +823,7 @@ fn parse_assignexpr(input: &str) -> IResult<&str, AssignExpr> {
     let (input, first_cond_or_expr) = parse_condorexpr(input)?;
     let (input, _) = opt(gap)(input)?;
     let parse_equals = terminated(tag("="), opt(gap));
-    let parse_next_cond_or_expr = opt(preceded(parse_equals, parse_assignexpr));
+    let mut parse_next_cond_or_expr = opt(preceded(parse_equals, parse_assignexpr));
     let (input, opt_cond_or_expr) = parse_next_cond_or_expr(input)?;
 
     let assign_expr = AssignExpr::new(first_cond_or_expr, opt_cond_or_expr);
@@ -877,7 +876,7 @@ fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
 
 fn parse_rangeexpr(input: &str) -> IResult<&str, RangeExpr> {
     let (input, left_add_expr) = parse_addexpr(input)?;
-    let parse_dots = delimited(opt(gap), tag(".."), opt(gap));
+    let mut parse_dots = delimited(opt(gap), tag(".."), opt(gap));
     let (input, _) = parse_dots(input)?;
     let (input, right_add_expr) = parse_addexpr(input)?;
     let range_expr = RangeExpr::new(left_add_expr, right_add_expr);
@@ -894,7 +893,7 @@ fn parse_addexpr(i: &str) -> IResult<&str, AddExpr> {
 
 fn parse_signedmultexpr(i: &str) -> IResult<&str, SignedMultExpr> {
     let parse_symbol = alt((tag("+"), tag("-")));
-    let parse_symbol_and_gap = terminated(parse_symbol, opt(gap));
+    let mut parse_symbol_and_gap = terminated(parse_symbol, opt(gap));
     let (i, symbol) = parse_symbol_and_gap(i)?;
     let (i, mult_expr) = parse_multexpr(i)?;
     let is_add = symbol == "+";
@@ -912,7 +911,7 @@ fn parse_multexpr(i: &str) -> IResult<&str, MultExpr> {
 
 fn parse_operatedunaryexprs(i: &str) -> IResult<&str, OperatedUnaryExpr> {
     let parse_operator = alt((tag("*"), tag("/")));
-    let parse_operator_and_gap = terminated(parse_operator, opt(gap));
+    let mut parse_operator_and_gap = terminated(parse_operator, opt(gap));
     let (i, operator) = parse_operator_and_gap(i)?;
     let (i, unary_expr) = parse_unaryexpr(i)?;
     let is_multiply = operator == "*";
@@ -948,17 +947,18 @@ fn parse_term_base(i: &str) -> IResult<&str, TermBase> {
         let term_base = TermBase::Literal(literal);
         return Ok((i, term_base));
     };
+    unimplemented!()
 }
 
 fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
     let open_paren = terminated(tag("("), opt(gap));
     let close_paren = preceded(opt(gap), tag(")"));
-    let parse_grouped = delimited(open_paren, parse_expr, close_paren);
+    let mut parse_grouped = delimited(open_paren, parse_expr, close_paren);
     parse_grouped(i)
 }
 
 fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
-    /
+    unimplemented!()
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
@@ -985,13 +985,13 @@ fn parse_return_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, return_expr))
 }
 
-fn parse_double_quoted_string_literal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, string_contents) = parse_double_quoted_string_literal(input)?;
-    let expr = Expr::new_literal(Literal::str(string_contents));
+fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, Literal> {
+    let (input, string_contents) = parse_double_quoted_string_contents(input)?;
+    let expr = Literal::str(string_contents);
     Ok((input, expr))
 }
 
-fn parse_double_quoted_string_literal(input: &str) -> IResult<&str, &str> {
+fn parse_double_quoted_string_contents(input: &str) -> IResult<&str, &str> {
     let esc = escaped(none_of("\\\""), '\\', one_of(r#"fnrtv\"$"#));
     let esc_or_empty = alt((esc, tag("")));
     let res = delimited(tag(r#"""#), esc_or_empty, tag(r#"""#))(input)?;
@@ -1004,121 +1004,121 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_ref_literal_expr_works_for_common_ref() {
+    fn parse_ref_literal_works_for_common_ref() {
         let s = "@p:some_Project:r:1e85e02f-0459cf96";
-        let expected = Expr::new_literal(Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96"));
-        assert_eq!(parse_ref_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96");
+        assert_eq!(parse_ref_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
-    fn parse_ref_literal_expr_works_for_uncommon_ref() {
+    fn parse_ref_literal_works_for_uncommon_ref() {
         let s = "@p:some_Project:r:1e85e02f-0459cf96~_-.:";
-        let expected = Expr::new_literal(Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:"));
-        assert_eq!(parse_ref_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:");
+        assert_eq!(parse_ref_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
-    fn parse_month_literal_expr_works() {
+    fn parse_month_literal_works() {
         let s = "1999-01";
         let month = Month::new(1999, 1).unwrap();
-        let expected = Expr::new_literal(Literal::month(month));
-        assert_eq!(parse_month_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::month(month);
+        assert_eq!(parse_month_literal(s).unwrap(), ("", expected));
 
         let s = "2020-07";
         let month = Month::new(2020, 7).unwrap();
-        let expected = Expr::new_literal(Literal::month(month));
-        assert_eq!(parse_month_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::month(month);
+        assert_eq!(parse_month_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
-    fn parse_date_literal_expr_works() {
+    fn parse_date_literal_works() {
         let s = "1999-01-01";
-        let expected = Expr::new_literal(Literal::date(1999, 1, 1));
-        assert_eq!(parse_date_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::date(1999, 1, 1);
+        assert_eq!(parse_date_literal(s).unwrap(), ("", expected));
 
         let s = "2020-07-11";
-        let expected = Expr::new_literal(Literal::date(2020, 7, 11));
-        assert_eq!(parse_date_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::date(2020, 7, 11);
+        assert_eq!(parse_date_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
-    fn parse_null_literal_expr_works() {
+    fn parse_null_literal_works() {
         let s = "null";
-        let expected = Expr::new_literal(Literal::Null);
-        assert_eq!(parse_null_literal_expr(s).unwrap(), ("", expected));
+        let expected = Literal::Null;
+        assert_eq!(parse_null_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
-    fn parse_bool_literal_expr_works() {
+    fn parse_bool_literal_works() {
         let t = "true";
-        let expected = Expr::new_literal(Literal::bool(true));
-        assert_eq!(parse_bool_literal_expr(t).unwrap(), ("", expected));
+        let expected = Literal::bool(true);
+        assert_eq!(parse_bool_literal(t).unwrap(), ("", expected));
 
         let f = "false";
-        let expected = Expr::new_literal(Literal::bool(false));
-        assert_eq!(parse_bool_literal_expr(f).unwrap(), ("", expected));
+        let expected = Literal::bool(false);
+        assert_eq!(parse_bool_literal(f).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_basic_num() {
         let s = "123";
         let expected =
-            Expr::new_literal(Literal::num("123".to_owned(), None, None));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+            Literal::num("123".to_owned(), None, None);
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123";
         let expected =
-            Expr::new_literal(Literal::num("-123".to_owned(), None, None));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+            Literal::num("-123".to_owned(), None, None);
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_basic_decimal() {
         let s = "123.456";
-        let expected = Expr::new_literal(Literal::num(
+        let expected = Literal::num(
             "123".to_owned(),
             Some("456".to_owned()),
             None,
-        ));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456";
-        let expected = Expr::new_literal(Literal::num(
+        let expected = Literal::num(
             "-123".to_owned(),
             Some("456".to_owned()),
             None,
-        ));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_exponent() {
         let s = "123e-10";
-        let expected = Expr::new_literal(Literal::num(
+        let expected = Literal::num(
             "123".to_owned(),
             None,
             Some("-10".to_owned()),
-        ));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456E99";
-        let expected = Expr::new_literal(Literal::num(
+        let expected = Literal::num(
             "-123".to_owned(),
             Some("456".to_owned()),
             Some("99".to_owned()),
-        ));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_a_mess() {
         let s = "-  \n \t 0.0E-0";
-        let expected = Expr::new_literal(Literal::num(
+        let expected = Literal::num(
             "-0".to_owned(),
             Some("0".to_owned()),
             Some("-0".to_owned()),
-        ));
-        assert_eq!(parse_number_literal_expr(s).unwrap(), ("", expected));
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     fn wrap_in_do_block(expr: Expr) -> Expr {
@@ -1394,7 +1394,7 @@ mod tests {
     fn parse_double_quoted_string_literal_works_on_normal_input() {
         let s = "\"Contents of this string is an Axon Str literal\"";
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", "Contents of this string is an Axon Str literal")
         );
     }
@@ -1402,7 +1402,7 @@ mod tests {
     #[test]
     fn parse_double_quoted_string_literal_works_on_empty_input() {
         let s = "\"\"";
-        assert_eq!(parse_double_quoted_string_literal(s).unwrap(), ("", ""));
+        assert_eq!(parse_double_quoted_string_contents(s).unwrap(), ("", ""));
     }
 
     #[test]
@@ -1410,7 +1410,7 @@ mod tests {
     ) {
         let s = r#""Name is \"Andrew\"""#;
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", r#"Name is \"Andrew\""#)
         );
     }
@@ -1420,7 +1420,7 @@ mod tests {
     ) {
         let s = r#""First\nSecond\nTab\tDone""#;
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", r#"First\nSecond\nTab\tDone"#)
         );
     }
@@ -1430,7 +1430,7 @@ mod tests {
     ) {
         let s = r#""First\fSecond\rTab\vDone""#;
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", r#"First\fSecond\rTab\vDone"#)
         );
     }
@@ -1440,7 +1440,7 @@ mod tests {
     ) {
         let s = r#""Backslash: \\""#;
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", r#"Backslash: \\"#)
         );
     }
@@ -1450,7 +1450,7 @@ mod tests {
     ) {
         let s = r#""\$equipRef \$navName""#;
         assert_eq!(
-            parse_double_quoted_string_literal(s).unwrap(),
+            parse_double_quoted_string_contents(s).unwrap(),
             ("", r#"\$equipRef \$navName"#)
         );
     }
