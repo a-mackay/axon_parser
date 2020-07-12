@@ -245,14 +245,14 @@ enum TrailingCall {
 
 #[derive(Debug, Eq, PartialEq)]
 struct DotCall {
-    function_name: String,
+    function_name: Id,
     trailing_call: Option<TrailingCall>,
 }
 
 impl DotCall {
-    fn new(function_name: &str, trailing_call: Option<TrailingCall>) -> Self {
+    fn new(function_name: Id, trailing_call: Option<TrailingCall>) -> Self {
         Self {
-            function_name: function_name.to_owned(),
+            function_name,
             trailing_call,
         }
     }
@@ -975,7 +975,25 @@ fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
-    todo!()
+    alt((
+        map(parse_call, TermChain::Call),
+        map(parse_dot_call, TermChain::DotCall),
+        parse_index,
+        parse_trap_call,
+    ))(i)
+}
+
+fn parse_dot_call(i: &str) -> IResult<&str, DotCall> {
+    let (i, _) = tag(".")(i)?;
+    let (i, id) = parse_id(i)?;
+    let (i, _) = opt(gap)(i)?;
+    let parse_trailing = alt((
+        map(parse_call, TrailingCall::Call),
+        map(parse_lambda, TrailingCall::Lambda),
+    ))
+    let (i, opt_trailing_call) = opt(parse_trailing)(i)?;
+    let dot_call = DotCall::new(id, opt_trailing_call);
+    Ok((i, dot_call))
 }
 
 fn parse_call(i: &str) -> IResult<&str, Call> {
@@ -1003,10 +1021,10 @@ fn parse_call(i: &str) -> IResult<&str, Call> {
 }
 
 fn parse_lambda(i: &str) -> IResult<&str, Lambda> {
-    if let Ok((i, lambda_many)) = parse_lambda_many(i) {
-        return Ok((i, Lambda::Many(lambda_many)))
-    };
-    map(parse_lambda_one, Lambda::One)(i)
+    alt((
+        map(parse_lambda_many, Lambda::Many),
+        map(parse_lambda_one, Lambda::One),
+    ))(i)
 }
 
 fn parse_lambda_many(i: &str) -> IResult<&str, LambdaMany> {
