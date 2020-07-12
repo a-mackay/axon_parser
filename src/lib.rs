@@ -692,15 +692,6 @@ fn parse_throw_keyword(input: &str) -> IResult<&str, ()> {
 
 fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
     map(parse_literal, |literal| Expr::new_literal(literal))(input)
-    // alt((
-    //     parse_double_quoted_string_literal_expr,
-    //     parse_number_literal_expr,
-    //     parse_bool_literal_expr,
-    //     parse_null_literal_expr,
-    //     parse_date_literal_expr,
-    //     parse_month_literal_expr,
-    //     parse_ref_literal_expr,
-    // ))(input)
 }
 
 fn parse_literal(input: &str) -> IResult<&str, Literal> {
