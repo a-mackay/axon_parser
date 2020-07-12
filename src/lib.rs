@@ -166,14 +166,14 @@ impl UnaryExprSign {
 
 #[derive(Debug, Eq, PartialEq)]
 struct Param {
-    var_name: String,
+    name: Id,
     default_value: Expr,
 }
 
 impl Param {
-    fn new(var_name: &str, default_value: Expr) -> Self {
+    fn new(name: Id, default_value: Expr) -> Self {
         Self {
-            var_name: var_name.to_owned(),
+            name,
             default_value,
         }
     }
@@ -181,14 +181,14 @@ impl Param {
 
 #[derive(Debug, Eq, PartialEq)]
 struct LambdaOne {
-    var_name: String,
+    var_name: Id,
     expr: Expr,
 }
 
 impl LambdaOne {
-    fn new(var_name: &str, expr: Expr) -> Self {
+    fn new(var_name: Id, expr: Expr) -> Self {
         Self {
-            var_name: var_name.to_owned(),
+            var_name,
             expr,
         }
     }
@@ -263,7 +263,7 @@ enum TermChain {
     Call(Call),
     DotCall(DotCall),
     Index(Box<Expr>),
-    TrapCall(String),
+    TrapCall(Id),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -656,8 +656,9 @@ fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
 }
 
 fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, id) = terminated(parse_id, tag(":"))(input)?;
-    let (input, _) = many0(alt((
+    let parse_colon = preceded(opt(gap), tag(":"));
+    let (input, id) = terminated(parse_id, parse_colon)(input)?;
+    let (input, _) = many0(alt(( // TODO replace with opt(gap)?
         parse_multi_whitespace,
         parse_newline_and_whitespace,
     )))(input)?;
@@ -818,6 +819,8 @@ fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
     let lit = Literal::num(integral, opt_fractional, opt_exponent);
     Ok((input, lit))
 }
+
+// TODO test parsing defs like x: 5
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
@@ -982,6 +985,105 @@ fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
 
 fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
     todo!()
+}
+
+fn parse_call(i: &str) -> IResult<&str, Call> {
+    let open_paren = terminated(tag("("), opt(gap));
+    let close_paren = preceded(opt(gap), tag(")"));
+    let parse_comma = delimited(opt(gap), tag(","), opt(gap));
+    let parse_remaining_call_args = many0(preceded(parse_comma, parse_call_arg));
+    let parse_call_args = opt(tuple((parse_call_arg, parse_remaining_call_args)));
+    let mut parse_call_args_in_paren = delimited(open_paren, parse_call_args, close_paren);
+    let (i, opt_all_call_args) = parse_call_args_in_paren(i)?;
+
+    let call_args: Vec<CallArg> = match opt_all_call_args {
+        Some((first_call_args, mut remaining_call_args)) => {
+            remaining_call_args.insert(0, first_call_args);
+            remaining_call_args
+        },
+        None => vec![]
+    };
+
+    let (i, _) = opt(gap)(i)?;
+
+    let (i, opt_lambda) = opt(parse_lambda)(i)?;
+    let call = Call::new(call_args, opt_lambda);
+    Ok((i, call))
+}
+
+fn parse_lambda(i: &str) -> IResult<&str, Lambda> {
+    if let Ok((i, lambda_many)) = parse_lambda_many(i) {
+        return Ok((i, Lambda::Many(lambda_many)))
+    };
+    map(parse_lambda_one, Lambda::One)(i)
+}
+
+fn parse_lambda_many(i: &str) -> IResult<&str, LambdaMany> {
+    let parse_arrow = delimited(opt(gap), tag("=>"), opt(gap));
+    let (i, params) = terminated(parse_params, parse_arrow)(i)?;
+    let (i, expr) = parse_expr(i)?;
+    let lambda = LambdaMany::new(params, expr);
+    Ok((i, lambda))
+}
+
+fn parse_params(i: &str) -> IResult<&str, Vec<Param>> {
+    let open_paren = terminated(tag("("), opt(gap));
+    let close_paren = preceded(opt(gap), tag(")"));
+
+    let parse_comma = delimited(opt(gap), tag(","), opt(gap));
+    let parse_subsequent_param = preceded(parse_comma, parse_param);
+    let parse_subsequent_params = many0(parse_subsequent_param);
+    let parse_all_params = opt(tuple((parse_param, parse_subsequent_params)));
+
+    let (i, opt_params) = delimited(open_paren, parse_all_params, close_paren)(i)?;
+    let params = match opt_params {
+        Some((first_param, mut remaining_params)) => {
+            remaining_params.insert(0, first_param);
+            remaining_params
+        },
+        None => vec![]
+    };
+    Ok((i, params))
+}
+
+fn parse_param(i: &str) -> IResult<&str, Param> {
+    let parse_colon = preceded(opt(gap), tag(":"));
+    let (i, id) = terminated(parse_id, parse_colon)(i)?;
+    let (i, _) = opt(gap)(i)?;
+    let (i, expr) = parse_expr(i)?;
+    let param = Param::new(id, expr);
+    Ok((i, param))
+}
+
+fn parse_lambda_one(i: &str) -> IResult<&str, LambdaOne> {
+    let parse_arrow = delimited(opt(gap), tag("=>"), opt(gap));
+    let (i, id) = terminated(parse_id, parse_arrow)(i)?;
+    let (i, expr) = parse_expr(i)?;
+    let lambda = LambdaOne::new(id, expr);
+    Ok((i, lambda))
+}
+
+fn parse_call_arg(i: &str) -> IResult<&str, CallArg> {
+    let res: IResult<&str, &str> = tag("_")(i);
+    if let Ok((i, _)) = res {
+        return Ok((i, CallArg::DiscardedExpr))
+    };
+    map(parse_expr, CallArg::Expr)(i)
+}
+
+fn parse_trap_call(i: &str) -> IResult<&str, TermChain> {
+    let parse_trap = terminated(tag("->"), opt(gap));
+    map(
+        preceded(parse_trap, parse_id),
+        TermChain::TrapCall
+    )(i)
+}
+
+fn parse_index(i: &str) -> IResult<&str, TermChain> {
+    let open_bracket = terminated(tag("["), opt(gap));
+    let close_bracket = preceded(opt(gap), tag("]"));
+    let (i, expr) = delimited(open_bracket, parse_expr, close_bracket)(i)?;
+    Ok((i, TermChain::Index(Box::new(expr))))
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
