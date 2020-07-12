@@ -126,6 +126,19 @@ impl ComparisonOperator {
             Self::Compare => "<=>",
         }
     }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "==" => Some(Self::Equals),
+            "!=" => Some(Self::NotEquals),
+            "<" => Some(Self::LessThan),
+            "<=" => Some(Self::LessThanOrEqual),
+            ">=" => Some(Self::GreaterThanOrEqual),
+            ">" => Some(Self::GreaterThan),
+            "<=>" => Some(Self::Compare),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -139,6 +152,14 @@ impl UnaryExprSign {
         match self {
             Self::Not => "not",
             Self::Minus => "-",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "-" => Some(Self::Minus),
+            "not" => Some(Self::Not),
+            _ => None,
         }
     }
 }
@@ -299,14 +320,14 @@ impl OperatedUnaryExpr {
 #[derive(Debug, Eq, PartialEq)]
 struct MultExpr {
     first_unary_expr: UnaryExpr,
-    remaining_unary_exprs: Vec<OperatedUnaryExpr>,
+    remaining_operated_unary_exprs: Vec<OperatedUnaryExpr>,
 }
 
 impl MultExpr {
-    fn new(first_unary_expr: UnaryExpr, remaining_unary_exprs: Vec<OperatedUnaryExpr>) -> Self {
+    fn new(first_unary_expr: UnaryExpr, remaining_operated_unary_exprs: Vec<OperatedUnaryExpr>) -> Self {
         Self {
             first_unary_expr,
-            remaining_unary_exprs,
+            remaining_operated_unary_exprs,
         }
     }
 }
@@ -329,14 +350,14 @@ impl SignedMultExpr {
 #[derive(Debug, Eq, PartialEq)]
 struct AddExpr {
     first_mult_expr: MultExpr,
-    remaining_mult_exprs: Vec<SignedMultExpr>,
+    remaining_signed_mult_exprs: Vec<SignedMultExpr>,
 }
 
 impl AddExpr {
-    fn new(first_mult_expr: MultExpr, remaining_mult_exprs: Vec<SignedMultExpr>) -> Self {
+    fn new(first_mult_expr: MultExpr, remaining_signed_mult_exprs: Vec<SignedMultExpr>) -> Self {
         Self {
             first_mult_expr,
-            remaining_mult_exprs,
+            remaining_signed_mult_exprs,
         }
     }
 }
@@ -360,6 +381,15 @@ impl RangeExpr {
 struct ComparedRangeExpr {
     operator: ComparisonOperator,
     range_expr: RangeExpr,
+}
+
+impl ComparedRangeExpr {
+    fn new(operator: ComparisonOperator, range_expr: RangeExpr) -> Self {
+        Self {
+            operator,
+            range_expr,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -434,6 +464,10 @@ pub enum Expr {
 }
 
 impl Expr {
+    fn new_assign(assign_expr: AssignExpr) -> Self {
+        Self::Assign(assign_expr)
+    }
+
     fn new_do_block(do_block: DoBlock) -> Self {
         Self::DoBlock(do_block)
     }
@@ -655,14 +689,30 @@ fn parse_throw_keyword(input: &str) -> IResult<&str, ()> {
 }
 
 fn parse_literal_expr(input: &str) -> IResult<&str, Expr> {
+    map(
+        parse_literal,
+        |literal| Expr::new_literal(literal),
+    )(input)
+    // alt((
+    //     parse_double_quoted_string_literal_expr,
+    //     parse_number_literal_expr,
+    //     parse_bool_literal_expr,
+    //     parse_null_literal_expr,
+    //     parse_date_literal_expr,
+    //     parse_month_literal_expr,
+    //     parse_ref_literal_expr,
+    // ))(input)
+}
+
+fn parse_literal(input: &str) -> IResult<&str, Literal> {
     alt((
-        parse_double_quoted_string_literal_expr,
-        parse_number_literal_expr,
-        parse_bool_literal_expr,
-        parse_null_literal_expr,
-        parse_date_literal_expr,
-        parse_month_literal_expr,
-        parse_ref_literal_expr,
+        parse_double_quoted_string_literal,
+        parse_number_literal,
+        parse_bool_literal,
+        parse_null_literal,
+        parse_date_literal,
+        parse_month_literal,
+        parse_ref_literal,
     ))(input)
 }
 
@@ -759,7 +809,156 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
         parse_throw_expr,
         parse_def_expr,
         parse_do_block_expr,
+        parse_assignexpr_expr,
     ))(input)
+}
+
+fn parse_assignexpr_expr(input: &str) -> IResult<&str, Expr> {
+    map(
+        parse_assignexpr,
+        |assignexpr| Expr::new_assign(assignexpr)
+    )(input)
+}
+
+fn parse_assignexpr(input: &str) -> IResult<&str, AssignExpr> {
+    let (input, first_cond_or_expr) = parse_condorexpr(input)?;
+    let (input, _) = opt(gap)(input)?;
+    let parse_equals = terminated(tag("="), opt(gap));
+    let parse_next_cond_or_expr = opt(preceded(parse_equals, parse_assignexpr));
+    let (input, opt_cond_or_expr) = parse_next_cond_or_expr(input)?;
+
+    let assign_expr = AssignExpr::new(first_cond_or_expr, opt_cond_or_expr);
+    Ok((input, assign_expr))
+}
+
+fn parse_condorexpr(input: &str) -> IResult<&str, CondOrExpr> {
+    let (input, first_cond_and_expr) = parse_condandexpr(input)?;
+    let parse_and = delimited(opt(gap), tag("and"), opt(gap));
+    let and_another_cond = preceded(parse_and, parse_condandexpr);
+    let (input, remaining_cond_and_exprs) = many0(and_another_cond)(input)?;
+    let cond_or_expr = CondOrExpr::new(first_cond_and_expr, remaining_cond_and_exprs);
+    Ok((input, cond_or_expr))
+}
+
+fn parse_condandexpr(input: &str) -> IResult<&str, CondAndExpr> {
+    let (input, first_compare_expr) = parse_compareexpr(input)?;
+    let parse_or = delimited(opt(gap), tag("or"), opt(gap));
+    let or_another_cond = preceded(parse_or, parse_compareexpr);
+    let (input, remaining_compare_exprs) = many0(or_another_cond)(input)?;
+    let cond_and_expr = CondAndExpr::new(first_compare_expr, remaining_compare_exprs);
+    Ok((input, cond_and_expr))
+}
+
+fn parse_compareexpr(input: &str) -> IResult<&str, CompareExpr> {
+    let (input, first_range_expr) = parse_rangeexpr(input)?;
+    let (input, _) = opt(gap)(input)?;
+    let (input, compared_range_exprs) = many0(parse_comparedrangeexprs)(input)?;
+    let compare_expr = CompareExpr::new(first_range_expr, compared_range_exprs);
+    Ok((input, compare_expr))
+}
+
+fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
+    let operators = alt((
+        tag("=="),
+        tag("!="),
+        tag("<"),
+        tag("<="),
+        tag(">="),
+        tag(">"),
+        tag("<=>"),
+    ));
+    let (i, operator) = terminated(operators, opt(gap))(i)?;
+    let (i, range_expr) = parse_rangeexpr(i)?;
+
+    let comparison_op = ComparisonOperator::from_str(operator).expect("Unimplemented comparison operator");
+    let comp_range_expr = ComparedRangeExpr::new(comparison_op, range_expr);
+    Ok((i, comp_range_expr))
+}
+
+fn parse_rangeexpr(input: &str) -> IResult<&str, RangeExpr> {
+    let (input, left_add_expr) = parse_addexpr(input)?;
+    let parse_dots = delimited(opt(gap), tag(".."), opt(gap));
+    let (input, _) = parse_dots(input)?;
+    let (input, right_add_expr) = parse_addexpr(input)?;
+    let range_expr = RangeExpr::new(left_add_expr, right_add_expr);
+    Ok((input, range_expr))
+}
+
+fn parse_addexpr(i: &str) -> IResult<&str, AddExpr> {
+    let (i, first_mult_expr) = parse_multexpr(i)?;
+    let (i, _) = opt(gap)(i)?;
+    let (i, remaining_signed_mult_exprs) = many0(parse_signedmultexpr)(i)?;
+    let add_expr = AddExpr::new(first_mult_expr, remaining_signed_mult_exprs);
+    Ok((i, add_expr))
+}
+
+fn parse_signedmultexpr(i: &str) -> IResult<&str, SignedMultExpr> {
+    let parse_symbol = alt((tag("+"), tag("-")));
+    let parse_symbol_and_gap = terminated(parse_symbol, opt(gap));
+    let (i, symbol) = parse_symbol_and_gap(i)?;
+    let (i, mult_expr) = parse_multexpr(i)?;
+    let is_add = symbol == "+";
+    let signed_mult_expr = SignedMultExpr::new(is_add, mult_expr);
+    Ok((i, signed_mult_expr))
+}
+
+fn parse_multexpr(i: &str) -> IResult<&str, MultExpr> {
+    let (i, first_unary_expr) = parse_unaryexpr(i)?;
+    let (i, _) = opt(gap)(i)?;
+    let (i, remaining_operated_unary_exprs) = many0(parse_operatedunaryexprs)(i)?;
+    let mult_expr = MultExpr::new(first_unary_expr, remaining_operated_unary_exprs);
+    Ok((i, mult_expr))
+}
+
+fn parse_operatedunaryexprs(i: &str) -> IResult<&str, OperatedUnaryExpr> {
+    let parse_operator = alt((tag("*"), tag("/")));
+    let parse_operator_and_gap = terminated(parse_operator, opt(gap));
+    let (i, operator) = parse_operator_and_gap(i)?;
+    let (i, unary_expr) = parse_unaryexpr(i)?;
+    let is_multiply = operator == "*";
+    let operated_unary_expr = OperatedUnaryExpr::new(is_multiply, unary_expr);
+    Ok((i, operated_unary_expr))
+}
+
+fn parse_unaryexpr(i: &str) -> IResult<&str, UnaryExpr> {
+    let parse_minus = terminated(tag("-"), opt(gap));
+    let parse_not = terminated(tag("not"), gap);
+    let (i, sign) = alt((parse_minus, parse_not))(i)?;
+    let (i, term_expr) = parse_termexpr(i)?;
+
+    let unary_expr_sign = UnaryExprSign::from_str(sign).expect("Unimplemented unary expression sign");
+    let unary_expr = UnaryExpr::new(unary_expr_sign, term_expr);
+    Ok((i, unary_expr))
+}
+
+fn parse_termexpr(i: &str) -> IResult<&str, TermExpr> {
+    let (i, term_base) = parse_term_base(i)?;
+    let (i, _) = opt(gap)(i)?;
+    let (i, term_chains) = many0(parse_term_chain)(i)?;
+    let term_expr = TermExpr::new(term_base, term_chains);
+    Ok((i, term_expr))
+}
+
+fn parse_term_base(i: &str) -> IResult<&str, TermBase> {
+    if let Ok((i, expr)) = parse_grouped_expr(i) {
+        let term_base = TermBase::GroupedExpr(Box::new(expr));
+        return Ok((i, term_base));
+    };
+    if let Ok((i, literal)) = parse_literal(i) {
+        let term_base = TermBase::Literal(literal);
+        return Ok((i, term_base));
+    };
+}
+
+fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
+    let open_paren = terminated(tag("("), opt(gap));
+    let close_paren = preceded(opt(gap), tag(")"));
+    let parse_grouped = delimited(open_paren, parse_expr, close_paren);
+    parse_grouped(i)
+}
+
+fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
+    /
 }
 
 fn parse_single_whitespace(input: &str) -> IResult<&str, ()> {
