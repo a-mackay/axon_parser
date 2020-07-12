@@ -986,12 +986,11 @@ fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
 fn parse_dot_call(i: &str) -> IResult<&str, DotCall> {
     let (i, _) = tag(".")(i)?;
     let (i, id) = parse_id(i)?;
-    let (i, _) = opt(gap)(i)?;
     let parse_trailing = alt((
         map(parse_call, TrailingCall::Call),
         map(parse_lambda, TrailingCall::Lambda),
-    ))
-    let (i, opt_trailing_call) = opt(parse_trailing)(i)?;
+    ));
+    let (i, opt_trailing_call) = opt(preceded(opt(gap), parse_trailing))(i)?;
     let dot_call = DotCall::new(id, opt_trailing_call);
     Ok((i, dot_call))
 }
@@ -1013,9 +1012,7 @@ fn parse_call(i: &str) -> IResult<&str, Call> {
         None => vec![]
     };
 
-    let (i, _) = opt(gap)(i)?;
-
-    let (i, opt_lambda) = opt(parse_lambda)(i)?;
+    let (i, opt_lambda) = opt(preceded(opt(gap), parse_lambda))(i)?;
     let call = Call::new(call_args, opt_lambda);
     Ok((i, call))
 }
@@ -1136,6 +1133,85 @@ fn parse_double_quoted_string_contents(input: &str) -> IResult<&str, &str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn int_expr(n: u32) -> Expr {
+        Expr::new_literal(Literal::int(n))
+    }
+
+    #[test]
+    fn parse_dot_call_works_with_no_trailing_call() {
+        let s = ".funcName ";
+        let e = DotCall::new(Id::new("funcName"), None);
+        assert_eq!(parse_dot_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_dot_call_works_with_simple_trailing_call() {
+        let s = ".funcName ( ) ";
+        let call = Call::new(vec![], None);
+        let e = DotCall::new(Id::new("funcName"), Some(TrailingCall::Call(call)));
+        assert_eq!(parse_dot_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_call_works_with_no_args_and_no_lambda() {
+        let s = "() ";
+        let e = Call::new(vec![], None);
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_call_works_with_args_and_no_lambda() {
+        let s = "(1, 2 , \n 3 \t ) ";
+        let arg1 = CallArg::Expr(int_expr(1));
+        let arg2 = CallArg::Expr(int_expr(2));
+        let arg3 = CallArg::Expr(int_expr(3));
+        let e = Call::new(vec![arg1, arg2, arg3], None);
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_call_works_with_discarded_args_and_no_lambda() {
+        let s = "(_, 2 , \n _ \t,_, 5 ,_) ";
+        let arg1 = CallArg::DiscardedExpr;
+        let arg2 = CallArg::Expr(int_expr(2));
+        let arg3 = CallArg::DiscardedExpr;
+        let arg4 = CallArg::DiscardedExpr;
+        let arg5 = CallArg::Expr(int_expr(5));
+        let arg6 = CallArg::DiscardedExpr;
+        let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], None);
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_index_works() {
+        let s = "[1] ";
+        let e = TermChain::Index(Box::new(Expr::Literal(Literal::int(1))));
+        assert_eq!(parse_index(s).unwrap(), (" ", e));
+
+        let s = "[  2 \t ] ";
+        let e = TermChain::Index(Box::new(Expr::Literal(Literal::int(2))));
+        assert_eq!(parse_index(s).unwrap(), (" ", e));
+
+        let s = "[\n3\n] ";
+        let e = TermChain::Index(Box::new(Expr::Literal(Literal::int(3))));
+        assert_eq!(parse_index(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_trap_call_works() {
+        let s = "->navName ";
+        let e = TermChain::TrapCall(Id::new("navName"));
+        assert_eq!(parse_trap_call(s).unwrap(), (" ", e));
+
+        let s = "-> tag";
+        let e = TermChain::TrapCall(Id::new("tag"));
+        assert_eq!(parse_trap_call(s).unwrap(), ("", e));
+
+        let s = "->\nonAnotherLine";
+        let e = TermChain::TrapCall(Id::new("onAnotherLine"));
+        assert_eq!(parse_trap_call(s).unwrap(), ("", e));
+    }
 
     #[test]
     fn parse_ref_literal_works_for_common_ref() {
