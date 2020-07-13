@@ -2,12 +2,17 @@ use chrono::NaiveDate;
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
-    character::complete::{alphanumeric0, digit1, none_of, one_of},
+    character::complete::{digit1, none_of, one_of},
     combinator::{map, opt},
     multi::{count, many0, many1},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
+
+pub fn parse_function(input: &str) -> Result<LambdaMany, ()> {
+    let (_, lambda_many) = parse_lambda_many(input).unwrap(); //TODO
+    Ok(lambda_many)
+}
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct TryCatchBlock {
@@ -104,7 +109,7 @@ impl DoBlock {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum ComparisonOperator {
+pub enum ComparisonOperator {
     Equals,
     NotEquals,
     LessThan,
@@ -115,7 +120,7 @@ enum ComparisonOperator {
 }
 
 impl ComparisonOperator {
-    fn to_symbol(&self) -> &str {
+    pub fn to_symbol(&self) -> &str {
         match self {
             Self::Equals => "==",
             Self::NotEquals => "!=",
@@ -142,13 +147,13 @@ impl ComparisonOperator {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum UnaryExprSign {
+pub enum UnaryExprSign {
     Not,
     Minus,
 }
 
 impl UnaryExprSign {
-    fn to_symbol(&self) -> &str {
+    pub fn to_symbol(&self) -> &str {
         match self {
             Self::Not => "not",
             Self::Minus => "-",
@@ -180,7 +185,7 @@ impl Param {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct LambdaOne {
+pub struct LambdaOne {
     var_name: Id,
     expr: Expr,
 }
@@ -192,7 +197,7 @@ impl LambdaOne {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct LambdaMany {
+pub struct LambdaMany {
     params: Vec<Param>,
     expr: Expr,
 }
@@ -809,8 +814,6 @@ fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
     Ok((input, lit))
 }
 
-// TODO test parsing defs like x: 5
-
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_try_catch_expr,
@@ -1137,6 +1140,62 @@ mod tests {
     }
 
     #[test]
+    fn parse_unaryexpr_minus_works() {
+        let s = "-5 ";
+        let e = UnaryExpr::new(
+            UnaryExprSign::Minus,
+            TermExpr::new(TermBase::Literal(Literal::int(5)), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+
+        let s = "- \n 5 ";
+        let e = UnaryExpr::new(
+            UnaryExprSign::Minus,
+            TermExpr::new(TermBase::Literal(Literal::int(5)), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_unaryexpr_not_works() {
+        let s = "not someBool ";
+        let e = UnaryExpr::new(
+            UnaryExprSign::Not,
+            TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+
+        let s = "not\nsomeBool ";
+        let e = UnaryExpr::new(
+            UnaryExprSign::Not,
+            TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_grouped_expr_works() {
+        let s = "(do 5 end) ";
+        let e = Expr::new_do_block(DoBlock::new(Exprs::new(vec![int_expr(5)])));
+        assert_eq!(parse_grouped_expr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_def_expr_works() {
+        let s = "x: 5 ";
+        let e = Expr::new_def(Id::new("x"), int_expr(5));
+        assert_eq!(parse_def_expr(s).unwrap(), (" ", e));
+
+        let s = "x:5 ";
+        let e = Expr::new_def(Id::new("x"), int_expr(5));
+        assert_eq!(parse_def_expr(s).unwrap(), (" ", e));
+
+        let s = "x:\n    5 ";
+        let e = Expr::new_def(Id::new("x"), int_expr(5));
+        assert_eq!(parse_def_expr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
     fn parse_termexpr_works() {
         let s = "1.toStr.toAxonCode()[5]->varName ";
         let e = TermExpr::new(
@@ -1168,6 +1227,52 @@ mod tests {
                 TermChain::Index(Box::new(int_expr(5))),
                 TermChain::TrapCall(Id::new("varName")),
             ],
+        );
+        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn parse_termexpr_works_with_trailing_lambda() {
+        let s = "1.map varName=> 2 ";
+        let lambda =
+            Lambda::One(LambdaOne::new(Id::new("varName"), int_expr(2)));
+        let e = TermExpr::new(
+            TermBase::Literal(Literal::int(1)),
+            vec![TermChain::DotCall(DotCall::new(
+                Id::new("map"),
+                Some(TrailingCall::Lambda(lambda)),
+            ))],
+        );
+        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn parse_termexpr_works_with_trailing_lambda2() {
+        let s = "1.map (varName)=> 2 ";
+        let param = Param::new(Id::new("varName"), None);
+        let lambda = Lambda::Many(LambdaMany::new(vec![param], int_expr(2)));
+        let e = TermExpr::new(
+            TermBase::Literal(Literal::int(1)),
+            vec![TermChain::DotCall(DotCall::new(
+                Id::new("map"),
+                Some(TrailingCall::Lambda(lambda)),
+            ))],
+        );
+        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn parse_termexpr_works_with_trailing_lambda3() {
+        let s = "1.map ( ) (varName)=> 2 ";
+        let param = Param::new(Id::new("varName"), None);
+        let lambda = Lambda::Many(LambdaMany::new(vec![param], int_expr(2)));
+        let call = Call::new(vec![], Some(lambda));
+        let e = TermExpr::new(
+            TermBase::Literal(Literal::int(1)),
+            vec![TermChain::DotCall(DotCall::new(
+                Id::new("map"),
+                Some(TrailingCall::Call(call)),
+            ))],
         );
         assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
     }
