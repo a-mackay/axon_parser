@@ -1322,6 +1322,13 @@ mod tests {
         let s = "(do 5 end) ";
         let e = Expr::new_do_block(DoBlock::new(Exprs::new(vec![int_expr(5)])));
         assert_eq!(parse_grouped_expr(s).unwrap(), (" ", e));
+
+        let s = "(functionName()) ";
+        let e = Expr::TermExpr(TermExpr::new(
+            TermBase::Var(Id::new("functionName")),
+            vec![TermChain::Call(Call::new(vec![], None))],
+        ));
+        assert_eq!(parse_grouped_expr(s).unwrap(), (" ", e))
     }
 
     #[test]
