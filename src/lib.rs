@@ -187,10 +187,7 @@ struct LambdaOne {
 
 impl LambdaOne {
     fn new(var_name: Id, expr: Expr) -> Self {
-        Self {
-            var_name,
-            expr,
-        }
+        Self { var_name, expr }
     }
 }
 
@@ -658,7 +655,8 @@ fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
 fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
     let parse_colon = preceded(opt(gap), tag(":"));
     let (input, id) = terminated(parse_id, parse_colon)(input)?;
-    let (input, _) = many0(alt(( // TODO replace with opt(gap)?
+    let (input, _) = many0(alt((
+        // TODO replace with opt(gap)?
         parse_multi_whitespace,
         parse_newline_and_whitespace,
     )))(input)?;
@@ -949,8 +947,7 @@ fn parse_unaryexpr(i: &str) -> IResult<&str, UnaryExpr> {
 
 fn parse_termexpr(i: &str) -> IResult<&str, TermExpr> {
     let (i, term_base) = parse_term_base(i)?;
-    let (i, _) = opt(gap)(i)?;
-    let (i, term_chains) = many0(parse_term_chain)(i)?;
+    let (i, term_chains) = many0(preceded(opt(gap), parse_term_chain))(i)?;
     let term_expr = TermExpr::new(term_base, term_chains);
     Ok((i, term_expr))
 }
@@ -999,17 +996,20 @@ fn parse_call(i: &str) -> IResult<&str, Call> {
     let open_paren = terminated(tag("("), opt(gap));
     let close_paren = preceded(opt(gap), tag(")"));
     let parse_comma = delimited(opt(gap), tag(","), opt(gap));
-    let parse_remaining_call_args = many0(preceded(parse_comma, parse_call_arg));
-    let parse_call_args = opt(tuple((parse_call_arg, parse_remaining_call_args)));
-    let mut parse_call_args_in_paren = delimited(open_paren, parse_call_args, close_paren);
+    let parse_remaining_call_args =
+        many0(preceded(parse_comma, parse_call_arg));
+    let parse_call_args =
+        opt(tuple((parse_call_arg, parse_remaining_call_args)));
+    let mut parse_call_args_in_paren =
+        delimited(open_paren, parse_call_args, close_paren);
     let (i, opt_all_call_args) = parse_call_args_in_paren(i)?;
 
     let call_args: Vec<CallArg> = match opt_all_call_args {
         Some((first_call_args, mut remaining_call_args)) => {
             remaining_call_args.insert(0, first_call_args);
             remaining_call_args
-        },
-        None => vec![]
+        }
+        None => vec![],
     };
 
     let (i, opt_lambda) = opt(preceded(opt(gap), parse_lambda))(i)?;
@@ -1041,13 +1041,14 @@ fn parse_params(i: &str) -> IResult<&str, Vec<Param>> {
     let parse_subsequent_params = many0(parse_subsequent_param);
     let parse_all_params = opt(tuple((parse_param, parse_subsequent_params)));
 
-    let (i, opt_params) = delimited(open_paren, parse_all_params, close_paren)(i)?;
+    let (i, opt_params) =
+        delimited(open_paren, parse_all_params, close_paren)(i)?;
     let params = match opt_params {
         Some((first_param, mut remaining_params)) => {
             remaining_params.insert(0, first_param);
             remaining_params
-        },
-        None => vec![]
+        }
+        None => vec![],
     };
     Ok((i, params))
 }
@@ -1072,17 +1073,14 @@ fn parse_lambda_one(i: &str) -> IResult<&str, LambdaOne> {
 fn parse_call_arg(i: &str) -> IResult<&str, CallArg> {
     let res: IResult<&str, &str> = tag("_")(i);
     if let Ok((i, _)) = res {
-        return Ok((i, CallArg::DiscardedExpr))
+        return Ok((i, CallArg::DiscardedExpr));
     };
     map(parse_expr, CallArg::Expr)(i)
 }
 
 fn parse_trap_call(i: &str) -> IResult<&str, TermChain> {
     let parse_trap = terminated(tag("->"), opt(gap));
-    map(
-        preceded(parse_trap, parse_id),
-        TermChain::TrapCall
-    )(i)
+    map(preceded(parse_trap, parse_id), TermChain::TrapCall)(i)
 }
 
 fn parse_index(i: &str) -> IResult<&str, TermChain> {
@@ -1139,6 +1137,42 @@ mod tests {
     }
 
     #[test]
+    fn parse_termexpr_works() {
+        let s = "1.toStr.toAxonCode()[5]->varName ";
+        let e = TermExpr::new(
+            TermBase::Literal(Literal::int(1)),
+            vec![
+                TermChain::DotCall(DotCall::new(Id::new("toStr"), None)),
+                TermChain::DotCall(DotCall::new(
+                    Id::new("toAxonCode"),
+                    Some(TrailingCall::Call(Call::new(vec![], None))),
+                )),
+                TermChain::Index(Box::new(int_expr(5))),
+                TermChain::TrapCall(Id::new("varName")),
+            ],
+        );
+        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn parse_termexpr_works2() {
+        let s = "1\n    .toStr\n    .toAxonCode ( ) \n[5]\n->\nvarName ";
+        let e = TermExpr::new(
+            TermBase::Literal(Literal::int(1)),
+            vec![
+                TermChain::DotCall(DotCall::new(Id::new("toStr"), None)),
+                TermChain::DotCall(DotCall::new(
+                    Id::new("toAxonCode"),
+                    Some(TrailingCall::Call(Call::new(vec![], None))),
+                )),
+                TermChain::Index(Box::new(int_expr(5))),
+                TermChain::TrapCall(Id::new("varName")),
+            ],
+        );
+        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
     fn parse_dot_call_works_with_no_trailing_call() {
         let s = ".funcName ";
         let e = DotCall::new(Id::new("funcName"), None);
@@ -1149,15 +1183,20 @@ mod tests {
     fn parse_dot_call_works_with_simple_trailing_call() {
         let s = ".funcName ( ) ";
         let call = Call::new(vec![], None);
-        let e = DotCall::new(Id::new("funcName"), Some(TrailingCall::Call(call)));
+        let e =
+            DotCall::new(Id::new("funcName"), Some(TrailingCall::Call(call)));
         assert_eq!(parse_dot_call(s).unwrap(), (" ", e));
     }
 
     #[test]
     fn parse_dot_call_works_with_simple_lambda() {
         let s = ".funcName varName => 1 ";
-        let lambda = Lambda::One(LambdaOne::new(Id::new("varName"), int_expr(1)));
-        let e = DotCall::new(Id::new("funcName"), Some(TrailingCall::Lambda(lambda)));
+        let lambda =
+            Lambda::One(LambdaOne::new(Id::new("varName"), int_expr(1)));
+        let e = DotCall::new(
+            Id::new("funcName"),
+            Some(TrailingCall::Lambda(lambda)),
+        );
         assert_eq!(parse_dot_call(s).unwrap(), (" ", e));
     }
 
@@ -1208,8 +1247,10 @@ mod tests {
         let arg4 = CallArg::DiscardedExpr;
         let arg5 = CallArg::Expr(int_expr(5));
         let arg6 = CallArg::DiscardedExpr;
-        let lambda = Lambda::One(LambdaOne::new(Id::new("lambdaVar"), int_expr(999)));
-        let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
+        let lambda =
+            Lambda::One(LambdaOne::new(Id::new("lambdaVar"), int_expr(999)));
+        let e =
+            Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
         assert_eq!(parse_call(s).unwrap(), (" ", e));
     }
 
@@ -1228,7 +1269,8 @@ mod tests {
             Param::new(Id::new("lambdaVar2"), Some(int_expr(33))),
         ];
         let lambda = Lambda::Many(LambdaMany::new(params, int_expr(999)));
-        let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
+        let e =
+            Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
         assert_eq!(parse_call(s).unwrap(), (" ", e));
     }
 
