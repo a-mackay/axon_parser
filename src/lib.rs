@@ -467,9 +467,6 @@ pub enum Expr {
         var_name: Id,
         expr: Box<Expr>,
     },
-    /// This differs from the Axon grammar page, I don't think
-    /// expressions like `x` can be expressed in the grammar?
-    Id(Id),
     Return {
         expr: Box<Expr>,
     },
@@ -899,13 +896,13 @@ fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
         parse_try_catch_expr,
-        parse_literal_expr, // TODO Axon grammar says literals are parsed in <assignExpr>
         parse_return_expr,
         parse_throw_expr,
+        parse_do_block_expr,
+        parse_literal_expr, // TODO Axon grammar says literals are parsed in <assignExpr>
         parse_def_expr,
         parse_assignment_expr,
-        parse_do_block_expr,
-        map(parse_id, Expr::Id),
+        map(parse_termexpr, Expr::TermExpr),
         parse_assignexpr_expr,
     ))(input)
 }
@@ -1406,8 +1403,9 @@ mod tests {
         // This should be interpretted as varName being passed as an
         // argument to map, not as part of the trailing lambda for map.
         let s = "1.map (varName)=> 2 ";
+        let var_name = TermExpr::new(TermBase::Var(Id::new("varName")), vec![]);
         let call =
-            Call::new(vec![CallArg::Expr(Expr::Id(Id::new("varName")))], None);
+            Call::new(vec![CallArg::Expr(Expr::TermExpr(var_name))], None);
         let e = TermExpr::new(
             TermBase::Literal(Literal::int(1)),
             vec![TermChain::DotCall(DotCall::new(
