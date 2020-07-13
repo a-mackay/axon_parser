@@ -167,11 +167,11 @@ impl UnaryExprSign {
 #[derive(Debug, Eq, PartialEq)]
 struct Param {
     name: Id,
-    default_value: Expr,
+    default_value: Option<Expr>,
 }
 
 impl Param {
-    fn new(name: Id, default_value: Expr) -> Self {
+    fn new(name: Id, default_value: Option<Expr>) -> Self {
         Self {
             name,
             default_value,
@@ -1053,11 +1053,11 @@ fn parse_params(i: &str) -> IResult<&str, Vec<Param>> {
 }
 
 fn parse_param(i: &str) -> IResult<&str, Param> {
-    let parse_colon = preceded(opt(gap), tag(":"));
-    let (i, id) = terminated(parse_id, parse_colon)(i)?;
-    let (i, _) = opt(gap)(i)?;
-    let (i, expr) = parse_expr(i)?;
-    let param = Param::new(id, expr);
+    let (i, id) = parse_id(i)?;
+    let parse_colon = delimited(opt(gap), tag(":"), opt(gap));
+    let parse_colon_and_expr = preceded(parse_colon, parse_expr);
+    let (i, opt_expr) = opt(parse_colon_and_expr)(i)?;
+    let param = Param::new(id, opt_expr);
     Ok((i, param))
 }
 
@@ -1154,6 +1154,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_call_works_with_one_arg_and_no_lambda() {
+        let s = "(1) ";
+        let arg1 = CallArg::Expr(int_expr(1));
+        let e = Call::new(vec![arg1], None);
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
     fn parse_call_works_with_no_args_and_no_lambda() {
         let s = "() ";
         let e = Call::new(vec![], None);
@@ -1181,6 +1189,73 @@ mod tests {
         let arg6 = CallArg::DiscardedExpr;
         let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], None);
         assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_many_works_on_simplest_lambda() {
+        let s = "() => 1 ";
+        let e = LambdaMany::new(vec![], int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+
+        let s = "( )=>\n 2 ";
+        let e = LambdaMany::new(vec![], int_expr(2));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_many_works_with_one_param() {
+        let s = "( arg\n) => 1 ";
+        let params = vec![Param::new(Id::new("arg"), None)];
+        let e = LambdaMany::new(params, int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_many_works_with_one_param_and_default_expr() {
+        let s = "(arg:5) => 1 ";
+        let params = vec![Param::new(Id::new("arg"), Some(int_expr(5)))];
+        let e = LambdaMany::new(params, int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+
+        let s = "(arg\n:\t 5 ) =>\n 1 ";
+        let params = vec![Param::new(Id::new("arg"), Some(int_expr(5)))];
+        let e = LambdaMany::new(params, int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_many_works_with_many_params() {
+        let s = "(\n arg1,\t arg2 , arg3) => 1 ";
+        let params = vec![
+            Param::new(Id::new("arg1"), None),
+            Param::new(Id::new("arg2"), None),
+            Param::new(Id::new("arg3"), None),
+        ];
+        let e = LambdaMany::new(params, int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_one_works() {
+        let s = "varName=>1 ";
+        let e = LambdaOne::new(Id::new("varName"), int_expr(1));
+        assert_eq!(parse_lambda_one(s).unwrap(), (" ", e));
+
+        let s = "varName\n => \t1 ";
+        let e = LambdaOne::new(Id::new("varName"), int_expr(1));
+        assert_eq!(parse_lambda_one(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_lambda_many_works_with_many_params_with_default_exprs() {
+        let s = "(\n arg1,\t arg2 : 5 , arg3:6) => 1 ";
+        let params = vec![
+            Param::new(Id::new("arg1"), None),
+            Param::new(Id::new("arg2"), Some(int_expr(5))),
+            Param::new(Id::new("arg3"), Some(int_expr(6))),
+        ];
+        let e = LambdaMany::new(params, int_expr(1));
+        assert_eq!(parse_lambda_many(s).unwrap(), (" ", e));
     }
 
     #[test]
