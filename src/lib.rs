@@ -1221,23 +1221,15 @@ mod tests {
 
     #[test]
     fn parsing_basic_function_works() {
-        // let f = r#"
-        // () => do
-        //     x: 5
-        //     x = 10
-        //     x.toStr()
-        //     x
-        // end
-        // "#;
-        // parse_function(f).unwrap();
-        let f = r#"do
+        let f = r#"
+        () => do
             x: 5
             x = 10
             x.toStr()
             x
         end
         "#;
-        parse_do_block(f).unwrap();
+        parse_function(f).unwrap();
     }
 
     fn simple_multexpr() -> MultExpr {
