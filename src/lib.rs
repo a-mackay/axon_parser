@@ -650,6 +650,7 @@ pub enum Literal {
         integral: String,
         fractional: Option<String>,
         exponent: Option<String>,
+        unit: Option<String>,
     },
 }
 
@@ -678,16 +679,18 @@ impl Literal {
         integral: String,
         fractional: Option<String>,
         exponent: Option<String>,
+        unit: Option<String>,
     ) -> Self {
         Self::Number {
             integral,
             fractional,
             exponent,
+            unit,
         }
     }
 
-    fn int(n: u32) -> Self {
-        Self::num(format!("{}", n), None, None)
+    fn int(n: i32) -> Self {
+        Self::num(format!("{}", n), None, None, None)
     }
 }
 
@@ -863,18 +866,20 @@ fn parse_bool_literal(input: &str) -> IResult<&str, Literal> {
     Ok((input, Literal::bool(b)))
 }
 
-fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
-    let (input, opt_integral_negation) = opt(tag("-"))(input)?;
+fn parse_number_literal(i: &str) -> IResult<&str, Literal> {
+    let (i, opt_integral_negation) = opt(terminated(tag("-"), opt(gap)))(i)?;
     let is_integral_negative = opt_integral_negation.is_some();
 
-    // Remove any blank space:
-    let (input, _) = opt(gap)(input)?;
+    let (i, integral) = digit1(i)?;
+    let (i, opt_fractional) = opt(preceded(tag("."), digit1))(i)?;
 
-    let (input, integral) = digit1(input)?;
-    let (input, opt_fractional) = opt(preceded(tag("."), digit1))(input)?;
     let exponent_num = pair(opt(tag("-")), digit1);
-    let (input, exponent_info) =
-        opt(preceded(alt((tag("e"), tag("E"))), exponent_num))(input)?;
+    let (i, exponent_info) =
+        opt(preceded(alt((tag("e"), tag("E"))), exponent_num))(i)?;
+
+    let unit_chars = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ%_/$");
+    let (i, unit) = opt(many1(unit_chars))(i)?;
+    let unit = unit.map(|s| s.into_iter().collect());
 
     let integral = if is_integral_negative {
         format!("-{}", integral)
@@ -889,8 +894,8 @@ fn parse_number_literal(input: &str) -> IResult<&str, Literal> {
         None => None,
     };
 
-    let lit = Literal::num(integral, opt_fractional, opt_exponent);
-    Ok((input, lit))
+    let lit = Literal::num(integral, opt_fractional, opt_exponent, unit);
+    Ok((i, lit))
 }
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
@@ -1215,7 +1220,7 @@ fn parse_double_quoted_string_contents(input: &str) -> IResult<&str, &str> {
 mod tests {
     use super::*;
 
-    fn int_expr(n: u32) -> Expr {
+    fn int_expr(n: i32) -> Expr {
         Expr::new_literal(Literal::int(n))
     }
 
@@ -1690,11 +1695,11 @@ mod tests {
     #[test]
     fn parse_number_literal_works_for_basic_num() {
         let s = "123";
-        let expected = Literal::num("123".to_owned(), None, None);
+        let expected = Literal::int(123);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123";
-        let expected = Literal::num("-123".to_owned(), None, None);
+        let expected = Literal::int(-123);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
@@ -1702,12 +1707,17 @@ mod tests {
     fn parse_number_literal_works_for_basic_decimal() {
         let s = "123.456";
         let expected =
-            Literal::num("123".to_owned(), Some("456".to_owned()), None);
+            Literal::num("123".to_owned(), Some("456".to_owned()), None, None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456";
         let expected =
-            Literal::num("-123".to_owned(), Some("456".to_owned()), None);
+            Literal::num("-123".to_owned(), Some("456".to_owned()), None, None);
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+
+        let s = "-123.456kPa";
+        let expected =
+            Literal::num("-123".to_owned(), Some("456".to_owned()), None, Some("kPa".to_owned()));
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
@@ -1715,7 +1725,7 @@ mod tests {
     fn parse_number_literal_works_for_exponent() {
         let s = "123e-10";
         let expected =
-            Literal::num("123".to_owned(), None, Some("-10".to_owned()));
+            Literal::num("123".to_owned(), None, Some("-10".to_owned()), None);
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
 
         let s = "-123.456E99";
@@ -1723,17 +1733,28 @@ mod tests {
             "-123".to_owned(),
             Some("456".to_owned()),
             Some("99".to_owned()),
+            None,
+        );
+        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+
+        let s = "-123.456E99kW";
+        let expected = Literal::num(
+            "-123".to_owned(),
+            Some("456".to_owned()),
+            Some("99".to_owned()),
+            Some("kW".to_owned()),
         );
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_a_mess() {
-        let s = "-  \n \t 0.0E-0";
+        let s = "-  \n \t 0.0E-0exampleUnit%";
         let expected = Literal::num(
             "-0".to_owned(),
             Some("0".to_owned()),
             Some("-0".to_owned()),
+            Some("exampleUnit%".to_owned()),
         );
         assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
     }
