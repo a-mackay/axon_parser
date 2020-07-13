@@ -3,13 +3,15 @@ use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
     character::complete::{digit1, none_of, one_of},
-    combinator::{map, opt},
+    combinator::{map, not, opt, peek},
     multi::{count, many0, many1},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
 pub fn parse_function(input: &str) -> Result<LambdaMany, ()> {
+    let (input, _) =
+        opt(gap)(input).expect("since this is optional, it should never fail");
     let (_, lambda_many) = parse_lambda_many(input).unwrap(); //TODO
     Ok(lambda_many)
 }
@@ -269,7 +271,7 @@ enum TermChain {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct TermExpr {
+pub struct TermExpr {
     term_base: TermBase,
     term_chain: Vec<TermChain>,
 }
@@ -454,15 +456,41 @@ impl AssignExpr {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Expr {
     Assign(AssignExpr),
+    /// This differs from the Axon grammar page, I don't think
+    /// expressions like `x = 5` can be expressed in the grammar?
+    Assignment {
+        var_name: Id,
+        expr: Box<Expr>,
+    },
     DoBlock(DoBlock),
-    Def { var_name: Id, expr: Box<Expr> },
-    Return { expr: Box<Expr> },
-    Throw { expr: Box<Expr> },
+    Def {
+        var_name: Id,
+        expr: Box<Expr>,
+    },
+    /// This differs from the Axon grammar page, I don't think
+    /// expressions like `x` can be expressed in the grammar?
+    Id(Id),
+    Return {
+        expr: Box<Expr>,
+    },
+    /// This differs from the Axon grammar page, I don't think
+    /// expressions like `x.toStr()` can be expressed in the grammar?
+    TermExpr(TermExpr),
+    Throw {
+        expr: Box<Expr>,
+    },
     TryCatch(Box<TryCatchBlock>),
     Literal(Literal),
 }
 
 impl Expr {
+    fn new_assignment(id: Id, expr: Expr) -> Self {
+        Self::Assignment {
+            var_name: id,
+            expr: Box::new(expr),
+        }
+    }
+
     fn new_assign(assign_expr: AssignExpr) -> Self {
         Self::Assign(assign_expr)
     }
@@ -525,17 +553,67 @@ impl Id {
     }
 }
 
-fn parse_id(input: &str) -> IResult<&str, Id> {
-    let lowercase_chars = "abcdefghijklmnopqrstuvwxyz";
-    let (input, first_char) = one_of(lowercase_chars)(input)?;
+fn parse_id(i: &str) -> IResult<&str, Id> {
+    // If it's a keyword, it can't be an id, so return early if its a keyword.
+    let (i, _) = peek(not(parse_keyword))(i)?;
+
+    let lower_char = one_of("abcdefghijklmnopqrstuvwxyz");
     let chars = one_of(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_",
     );
-    let (input, remaining_chars) = many0(chars)(input)?;
+    let other_chars = many0(chars);
+    let mut id = pair(lower_char, other_chars);
+
+    let (i, (first_char, remaining_chars)) = id(i)?;
     let remaining_str: String = remaining_chars.into_iter().collect();
     let id_str = format!("{}{}", first_char, remaining_str);
     let id = Id::new(&id_str);
-    Ok((input, id))
+    Ok((i, id))
+}
+
+fn parse_keyword(i: &str) -> IResult<&str, ()> {
+    let (i, _) = peek(terminated(keyword, terminators))(i)?;
+    map(keyword, |_| ())(i)
+}
+
+/// We must encounter one these symbols after a keyword, they determine
+/// when the keyword has ended.
+fn terminators(i: &str) -> IResult<&str, &str> {
+    alt((
+        map(gap, |_| "whitespace-placeholder"),
+        tag("("),
+        tag(")"),
+        tag("="),
+        tag("{"),
+        tag("}"),
+        tag("["),
+        tag("]"),
+        tag("@"),
+        tag("-"),
+        tag("\""),
+        tag("`"),
+    ))(i)
+}
+
+fn keyword(i: &str) -> IResult<&str, &str> {
+    alt((
+        tag("and"),
+        tag("catch"),
+        tag("defcomp"),
+        tag("deflinks"),
+        tag("do"),
+        tag("else"),
+        tag("end"),
+        tag("false"),
+        tag("if"),
+        tag("not"),
+        tag("null"),
+        tag("or"),
+        tag("return"),
+        tag("throw"),
+        tag("true"),
+        tag("try"),
+    ))(i)
 }
 
 impl Expr {
@@ -646,15 +724,19 @@ fn parse_do_block_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
-    let (input, _) = tag("do")(input)?;
-    let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
-    let (input, _) = many1(gap)(input)?;
-
-    let gap = alt((parse_multi_whitespace, parse_newline_and_whitespace));
-    let ending = preceded(many1(gap), tag("end"));
+    let (input, _) = terminated(tag("do"), opt(gap))(input)?;
+    let ending = preceded(opt(gap), tag("end"));
     let (input, exprs) = terminated(parse_exprs, ending)(input)?;
     let do_block = DoBlock::new(exprs);
     Ok((input, do_block))
+}
+
+fn parse_assignment_expr(input: &str) -> IResult<&str, Expr> {
+    let parse_equals = delimited(opt(gap), tag("="), opt(gap));
+    let (input, id) = terminated(parse_id, parse_equals)(input)?;
+    let (input, expr) = parse_expr(input)?;
+    let assignment_expr = Expr::new_assignment(id, expr);
+    Ok((input, assignment_expr))
 }
 
 fn parse_def_expr(input: &str) -> IResult<&str, Expr> {
@@ -821,7 +903,9 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
         parse_return_expr,
         parse_throw_expr,
         parse_def_expr,
+        parse_assignment_expr,
         parse_do_block_expr,
+        map(parse_id, Expr::Id),
         parse_assignexpr_expr,
     ))(input)
 }
@@ -900,8 +984,8 @@ fn parse_rangeexpr(input: &str) -> IResult<&str, RangeExpr> {
 
 fn parse_addexpr(i: &str) -> IResult<&str, AddExpr> {
     let (i, first_mult_expr) = parse_multexpr(i)?;
-    let (i, _) = opt(gap)(i)?;
-    let (i, remaining_signed_mult_exprs) = many0(parse_signedmultexpr)(i)?;
+    let (i, remaining_signed_mult_exprs) =
+        many0(preceded(opt(gap), parse_signedmultexpr))(i)?;
     let add_expr = AddExpr::new(first_mult_expr, remaining_signed_mult_exprs);
     Ok((i, add_expr))
 }
@@ -918,9 +1002,8 @@ fn parse_signedmultexpr(i: &str) -> IResult<&str, SignedMultExpr> {
 
 fn parse_multexpr(i: &str) -> IResult<&str, MultExpr> {
     let (i, first_unary_expr) = parse_unaryexpr(i)?;
-    let (i, _) = opt(gap)(i)?;
     let (i, remaining_operated_unary_exprs) =
-        many0(parse_operatedunaryexprs)(i)?;
+        many0(preceded(opt(gap), parse_operatedunaryexprs))(i)?;
     let mult_expr =
         MultExpr::new(first_unary_expr, remaining_operated_unary_exprs);
     Ok((i, mult_expr))
@@ -1140,6 +1223,78 @@ mod tests {
     }
 
     #[test]
+    fn parsing_basic_function_works() {
+        // let f = r#"
+        // () => do
+        //     x: 5
+        //     x = 10
+        //     x.toStr()
+        //     x
+        // end
+        // "#;
+        // parse_function(f).unwrap();
+        let f = r#"do
+            x: 5
+            x = 10
+            x.toStr()
+            x
+        end
+        "#;
+        parse_do_block(f).unwrap();
+    }
+
+    fn simple_multexpr() -> MultExpr {
+        parse_multexpr("-0").unwrap().1
+    }
+
+    fn simple_unaryexpr() -> UnaryExpr {
+        parse_unaryexpr("-0").unwrap().1
+    }
+
+    #[test]
+    fn parse_simple_assignment_works() {
+        let s = "x = 5 ";
+        let e = Expr::new_assignment(Id::new("x"), int_expr(5));
+        assert_eq!(parse_assignment_expr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_addexpr_works() {
+        let s = "-0 ";
+        let e = AddExpr::new(simple_multexpr(), vec![]);
+        assert_eq!(parse_addexpr(s).unwrap(), (" ", e));
+
+        let s = "-0 + -0--0 ";
+        let remaining_signed_mult_exprs = vec![
+            SignedMultExpr::new(true, simple_multexpr()),
+            SignedMultExpr::new(false, simple_multexpr()),
+        ];
+        let e = AddExpr::new(simple_multexpr(), remaining_signed_mult_exprs);
+        assert_eq!(parse_addexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn parse_multexpr_works() {
+        let s = "-0 ";
+        let e = MultExpr::new(simple_unaryexpr(), vec![]);
+        assert_eq!(parse_multexpr(s).unwrap(), (" ", e));
+
+        let s = "-0 * -0 ";
+        let op_unary_expr = OperatedUnaryExpr::new(true, simple_unaryexpr());
+        let e = MultExpr::new(simple_unaryexpr(), vec![op_unary_expr]);
+        assert_eq!(parse_multexpr(s).unwrap(), (" ", e));
+
+        let s = "-0*-0 /\n-0 ";
+        let remaining_operated_unary_exprs = vec![
+            OperatedUnaryExpr::new(true, simple_unaryexpr()),
+            OperatedUnaryExpr::new(false, simple_unaryexpr()),
+        ];
+        let e =
+            MultExpr::new(simple_unaryexpr(), remaining_operated_unary_exprs);
+        assert_eq!(parse_multexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
     fn parse_unaryexpr_minus_works() {
         let s = "-5 ";
         let e = UnaryExpr::new(
@@ -1248,17 +1403,19 @@ mod tests {
 
     #[test]
     fn parse_termexpr_works_with_trailing_lambda2() {
+        // This should be interpretted as varName being passed as an
+        // argument to map, not as part of the trailing lambda for map.
         let s = "1.map (varName)=> 2 ";
-        let param = Param::new(Id::new("varName"), None);
-        let lambda = Lambda::Many(LambdaMany::new(vec![param], int_expr(2)));
+        let call =
+            Call::new(vec![CallArg::Expr(Expr::Id(Id::new("varName")))], None);
         let e = TermExpr::new(
             TermBase::Literal(Literal::int(1)),
             vec![TermChain::DotCall(DotCall::new(
                 Id::new("map"),
-                Some(TrailingCall::Lambda(lambda)),
+                Some(TrailingCall::Call(call)),
             ))],
         );
-        assert_eq!(parse_termexpr(s).unwrap(), (" ", e))
+        assert_eq!(parse_termexpr(s).unwrap(), ("=> 2 ", e))
     }
 
     #[test]
@@ -1678,12 +1835,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_keyword_works() {
+        assert_eq!(parse_keyword("and(").unwrap(), ("(", ()));
+        assert_eq!(parse_keyword("catch\"").unwrap(), ("\"", ()));
+        assert_eq!(parse_keyword("try[").unwrap(), ("[", ()));
+        assert_eq!(parse_keyword("throw{").unwrap(), ("{", ()));
+        assert_eq!(parse_keyword("do@").unwrap(), ("@", ()));
+        assert_eq!(parse_keyword("end)").unwrap(), (")", ()));
+        assert_eq!(parse_keyword("end}").unwrap(), ("}", ()));
+        assert_eq!(parse_keyword("end]").unwrap(), ("]", ()));
+        assert_eq!(parse_keyword("do\n").unwrap(), ("\n", ()));
+        assert_eq!(parse_keyword("not ").unwrap(), (" ", ()));
+        assert_eq!(parse_keyword("catch`").unwrap(), ("`", ()));
+    }
+
+    #[test]
     fn parse_do_block_works_on_single_line() {
-        let s = "do \"Hello\" end";
+        let s = "do \"Hello\" end ";
         let expect_expr = Expr::Literal(Literal::Str("Hello".to_owned()));
         let expect_exprs = Exprs::new(vec![expect_expr]);
         let expect = DoBlock::new(expect_exprs);
-        assert_eq!(parse_do_block(s).unwrap(), ("", expect));
+        assert_eq!(parse_do_block(s).unwrap(), (" ", expect));
     }
 
     #[test]
