@@ -1637,126 +1637,126 @@ mod tests {
 
     #[test]
     fn parse_ref_literal_works_for_common_ref() {
-        let s = "@p:some_Project:r:1e85e02f-0459cf96";
+        let s = "@p:some_Project:r:1e85e02f-0459cf96 ";
         let expected = Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96");
-        assert_eq!(parse_ref_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_ref_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_ref_literal_works_for_uncommon_ref() {
-        let s = "@p:some_Project:r:1e85e02f-0459cf96~_-.:";
+        let s = "@p:some_Project:r:1e85e02f-0459cf96~_-.: ";
         let expected =
             Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:");
-        assert_eq!(parse_ref_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_ref_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_month_literal_works() {
-        let s = "1999-01";
+        let s = "1999-01 ";
         let month = Month::new(1999, 1).unwrap();
         let expected = Literal::month(month);
-        assert_eq!(parse_month_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_month_literal(s).unwrap(), (" ", expected));
 
-        let s = "2020-07";
+        let s = "2020-07 ";
         let month = Month::new(2020, 7).unwrap();
         let expected = Literal::month(month);
-        assert_eq!(parse_month_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_month_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_date_literal_works() {
-        let s = "1999-01-01";
+        let s = "1999-01-01 ";
         let expected = Literal::date(1999, 1, 1);
-        assert_eq!(parse_date_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_date_literal(s).unwrap(), (" ", expected));
 
-        let s = "2020-07-11";
+        let s = "2020-07-11 ";
         let expected = Literal::date(2020, 7, 11);
-        assert_eq!(parse_date_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_date_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_null_literal_works() {
-        let s = "null";
+        let s = "null ";
         let expected = Literal::Null;
-        assert_eq!(parse_null_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_null_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_bool_literal_works() {
-        let t = "true";
+        let t = "true ";
         let expected = Literal::bool(true);
-        assert_eq!(parse_bool_literal(t).unwrap(), ("", expected));
+        assert_eq!(parse_bool_literal(t).unwrap(), (" ", expected));
 
-        let f = "false";
+        let f = "false ";
         let expected = Literal::bool(false);
-        assert_eq!(parse_bool_literal(f).unwrap(), ("", expected));
+        assert_eq!(parse_bool_literal(f).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_basic_num() {
-        let s = "123";
+        let s = "123 ";
         let expected = Literal::int(123);
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
-        let s = "-123";
+        let s = "-123 ";
         let expected = Literal::int(-123);
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_basic_decimal() {
-        let s = "123.456";
+        let s = "123.456 ";
         let expected =
             Literal::num("123".to_owned(), Some("456".to_owned()), None, None);
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
-        let s = "-123.456";
+        let s = "-123.456 ";
         let expected =
             Literal::num("-123".to_owned(), Some("456".to_owned()), None, None);
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
-        let s = "-123.456kPa";
+        let s = "-123.456kPa ";
         let expected =
             Literal::num("-123".to_owned(), Some("456".to_owned()), None, Some("kPa".to_owned()));
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_exponent() {
-        let s = "123e-10";
+        let s = "123e-10 ";
         let expected =
             Literal::num("123".to_owned(), None, Some("-10".to_owned()), None);
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
-        let s = "-123.456E99";
+        let s = "-123.456E99 ";
         let expected = Literal::num(
             "-123".to_owned(),
             Some("456".to_owned()),
             Some("99".to_owned()),
             None,
         );
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
-        let s = "-123.456E99kW";
+        let s = "-123.456E99kW ";
         let expected = Literal::num(
             "-123".to_owned(),
             Some("456".to_owned()),
             Some("99".to_owned()),
             Some("kW".to_owned()),
         );
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
     }
 
     #[test]
     fn parse_number_literal_works_for_a_mess() {
-        let s = "-  \n \t 0.0E-0exampleUnit%";
+        let s = "-  \n \t 0.0E-0exampleUnit% ";
         let expected = Literal::num(
             "-0".to_owned(),
             Some("0".to_owned()),
             Some("-0".to_owned()),
             Some("exampleUnit%".to_owned()),
         );
-        assert_eq!(parse_number_literal(s).unwrap(), ("", expected));
+        assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
     }
 
     fn wrap_in_do_block(expr: Expr) -> Expr {
