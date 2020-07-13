@@ -1154,6 +1154,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_dot_call_works_with_simple_lambda() {
+        let s = ".funcName varName => 1 ";
+        let lambda = Lambda::One(LambdaOne::new(Id::new("varName"), int_expr(1)));
+        let e = DotCall::new(Id::new("funcName"), Some(TrailingCall::Lambda(lambda)));
+        assert_eq!(parse_dot_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
     fn parse_call_works_with_one_arg_and_no_lambda() {
         let s = "(1) ";
         let arg1 = CallArg::Expr(int_expr(1));
@@ -1188,6 +1196,39 @@ mod tests {
         let arg5 = CallArg::Expr(int_expr(5));
         let arg6 = CallArg::DiscardedExpr;
         let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], None);
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_call_works_with_discarded_args_and_simple_lambda() {
+        let s = "(_, 2 , \n _ \t,_, 5 ,_) lambdaVar  => 999 ";
+        let arg1 = CallArg::DiscardedExpr;
+        let arg2 = CallArg::Expr(int_expr(2));
+        let arg3 = CallArg::DiscardedExpr;
+        let arg4 = CallArg::DiscardedExpr;
+        let arg5 = CallArg::Expr(int_expr(5));
+        let arg6 = CallArg::DiscardedExpr;
+        let lambda = Lambda::One(LambdaOne::new(Id::new("lambdaVar"), int_expr(999)));
+        let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
+        assert_eq!(parse_call(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_call_works_with_discarded_args_and_simple_lambda2() {
+        let s = "(_, 2 , \n _ \t,_, 5 ,_)(lambdaVar1, lambdaVar2:33)=> 999 ";
+        let arg1 = CallArg::DiscardedExpr;
+        let arg2 = CallArg::Expr(int_expr(2));
+        let arg3 = CallArg::DiscardedExpr;
+        let arg4 = CallArg::DiscardedExpr;
+        let arg5 = CallArg::Expr(int_expr(5));
+        let arg6 = CallArg::DiscardedExpr;
+
+        let params = vec![
+            Param::new(Id::new("lambdaVar1"), None),
+            Param::new(Id::new("lambdaVar2"), Some(int_expr(33))),
+        ];
+        let lambda = Lambda::Many(LambdaMany::new(params, int_expr(999)));
+        let e = Call::new(vec![arg1, arg2, arg3, arg4, arg5, arg6], Some(lambda));
         assert_eq!(parse_call(s).unwrap(), (" ", e));
     }
 
