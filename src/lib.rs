@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag},
@@ -644,6 +644,7 @@ pub enum Literal {
     Date(NaiveDate),
     Ref(String),
     Str(String),
+    Time(NaiveTime),
     DateMonth(Month),
     Null,
     Number {
@@ -788,6 +789,7 @@ fn parse_literal(input: &str) -> IResult<&str, Literal> {
         parse_date_literal,
         parse_month_literal,
         parse_ref_literal,
+        map(parse_naive_time, Literal::Time),
     ))(input)
 }
 
@@ -804,6 +806,38 @@ fn parse_ref_literal(input: &str) -> IResult<&str, Literal> {
 
 fn valid_digit(input: &str) -> IResult<&str, char> {
     one_of("1234567890")(input)
+}
+
+fn parse_naive_time(i: &str) -> IResult<&str, NaiveTime> {
+    let parse_hours = alt((count(valid_digit, 2), count(valid_digit, 1)));
+    let (i, hours_str) = terminated(parse_hours, tag(":"))(i)?;
+    let (i, mins_str) = count(valid_digit, 2)(i)?;
+
+    let (i, opt_secs_str) = opt(preceded(tag(":"), count(valid_digit, 2)))(i)?;
+    let (i, opt_millisecs_str) = opt(preceded(tag("."), digit1))(i)?;
+
+    if opt_secs_str.is_none() && opt_millisecs_str.is_some() {
+        todo!();
+    }
+
+    let secs = match opt_secs_str {
+        Some(secs_str) => secs_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
+        None => 0,
+    };
+
+    let millisecs = match opt_millisecs_str {
+        Some(millisecs_str) => millisecs_str.parse().expect("Should parse as an int"),
+        None => 0,
+    };
+
+    let time = NaiveTime::from_hms_milli(
+        hours_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
+        mins_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
+        secs,
+        millisecs,
+    );
+
+    Ok((i, time))
 }
 
 fn parse_month_literal(input: &str) -> IResult<&str, Literal> {
@@ -1648,6 +1682,25 @@ mod tests {
         let expected =
             Literal::ref_lit("@p:some_Project:r:1e85e02f-0459cf96~_-.:");
         assert_eq!(parse_ref_literal(s).unwrap(), (" ", expected));
+    }
+
+    #[test]
+    fn test_parse_naive_time_works() {
+        let s = "1:23 ";
+        let e = NaiveTime::from_hms(1, 23, 0);
+        assert_eq!(parse_naive_time(s).unwrap(), (" ", e));
+
+        let s = "1:23:45 ";
+        let e = NaiveTime::from_hms(1, 23, 45);
+        assert_eq!(parse_naive_time(s).unwrap(), (" ", e));
+
+        let s = "1:23:45.678 ";
+        let e = NaiveTime::from_hms_milli(1, 23, 45, 678);
+        assert_eq!(parse_naive_time(s).unwrap(), (" ", e));
+
+        let s = "21:23:45.678 ";
+        let e = NaiveTime::from_hms_milli(21, 23, 45, 678);
+        assert_eq!(parse_naive_time(s).unwrap(), (" ", e));
     }
 
     #[test]
