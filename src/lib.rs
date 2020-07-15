@@ -22,14 +22,37 @@ fn parse_if(i: &str) -> IResult<&str, If> {
     let conditional_end = pair(optgap, tag(")"));
     let (i, condition) = terminated(parse_expr, conditional_end)(i)?;
 
+    let parse_do_keyword = |input| parse_specific_keyword(input, "do");
     let parse_do = preceded(optgap, parse_do_keyword);
-    let before_consequent = alt((map(optgap, |_| "gap"), parse_do));
+    let mut before_consequent = alt((map(optgap, |_| "gap"), parse_do));
     let (i, str_before_consequent) = before_consequent(i)?;
 
     let has_do = str_before_consequent == "do";
 
     let (i, consequent) = preceded(optgap, parse_expr)(i)?;
-    // ``` ["else" <expr>]```
+
+    let parse_else_keyword = |input| parse_specific_keyword(input, "else");
+    let parse_end_else = map(tuple((tag("end"), gap, parse_else_keyword)), |tuple| tuple.0);
+    // This function's result will either be "end" (for `end else`) or "else"
+    // (for `else`)
+    let before_alternative = preceded(optgap, alt((parse_else_keyword, parse_end_else)));
+
+    let parse_alternative_expr = preceded(optgap, parse_expr);
+    let (i, opt_alternative_info) = opt(tuple((before_alternative, parse_alternative_expr)))(i)?;
+
+    let has_end = match opt_alternative_info {
+        Some((before_str, _)) if before_str == "end" => true,
+        _ => false,
+    };
+
+    if has_end && !has_do {
+        todo!();
+    }
+
+    let opt_alternative = opt_alternative_info.map(|tuple| tuple.1);
+
+    let if_struct = If::new(condition, consequent, opt_alternative);
+    Ok((i, if_struct))
 }
 
 fn optgap(i: &str) -> IResult<&str, ()> {
@@ -610,9 +633,9 @@ fn parse_id(i: &str) -> IResult<&str, Id> {
     Ok((i, id))
 }
 
-fn parse_do_keyword(i: &str) -> IResult<&str, &str> {
+fn parse_specific_keyword<'a>(i: &'a str, target_keyword: &str) -> IResult<&'a str, &'a str> {
     let (i, word) = peek(terminated(keyword, terminators))(i)?;
-    if word == "do" {
+    if word == target_keyword {
         keyword(i)
     } else {
         // TODO is this the right approach to returning errors?
@@ -1959,10 +1982,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_do_keyword_works() {
-        assert_eq!(parse_do_keyword("do{").unwrap(), ("{", "do"));
-        assert_eq!(parse_do_keyword("do\n").unwrap(), ("\n", "do"));
-        assert!(parse_do_keyword("doFunction").is_err());
+    fn parse_specific_keyword_works() {
+        assert_eq!(parse_specific_keyword("do{", "do").unwrap(), ("{", "do"));
+        assert_eq!(parse_specific_keyword("do\n", "do").unwrap(), ("\n", "do"));
+        assert!(parse_specific_keyword("doFunction", "do").is_err());
     }
 
     #[test]
