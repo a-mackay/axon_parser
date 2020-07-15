@@ -1431,7 +1431,7 @@ mod tests {
         );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
-        let s = "if(true)do 1 end else 2 ";
+        let s = "if(true)do 1 else 2 ";
         let e = If::new(
             bool_expr(true),
             wrap_in_do_block(int_expr(1)),
@@ -1488,7 +1488,7 @@ mod tests {
         );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
-        let s = "if(true)\ndo 1\n end \nelse 2 ";
+        let s = "if(true)\ndo 1\n \nelse 2 ";
         let e = If::new(
             bool_expr(true),
             wrap_in_do_block(int_expr(1)),
@@ -1516,7 +1516,7 @@ mod tests {
 
     #[test]
     fn parse_if_works_for_if_in_else2() {
-        let s = "if (true) do\n 1\n end\nelse if (false)\ndo 2 end else 3 ";
+        let s = "if (true) do\n 1\n \nelse if (false)\ndo 2 end else 3 ";
         let nested_if = If::new(
             bool_expr(false),
             wrap_in_do_block(int_expr(2)),
