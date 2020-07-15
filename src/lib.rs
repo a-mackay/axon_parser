@@ -16,42 +16,39 @@ pub fn parse_function(input: &str) -> Result<LambdaMany, ()> {
     Ok(lambda_many)
 }
 
-fn parse_if(i: &str) -> IResult<&str, If> {
+fn parse_if<'a>(i: &'a str) -> IResult<&'a str, If> {
     let conditional_start = tuple((tag("if"), optgap, tag("(")));
     let (i, _) = terminated(conditional_start, optgap)(i)?;
     let conditional_end = pair(optgap, tag(")"));
     let (i, condition) = terminated(parse_expr, conditional_end)(i)?;
 
-    let parse_do_keyword = |input| parse_specific_keyword(input, "do");
-    let parse_do = preceded(optgap, parse_do_keyword);
-    let mut before_consequent = alt((map(optgap, |_| "gap"), parse_do));
-    let (i, str_before_consequent) = before_consequent(i)?;
+    // Parse the consequent Expr or DoBlock:
 
-    let has_do = str_before_consequent == "do";
-
-    let (i, consequent) = preceded(optgap, parse_expr)(i)?;
-
-    let parse_else_keyword = |input| parse_specific_keyword(input, "else");
-    let parse_end_else = map(tuple((tag("end"), gap, parse_else_keyword)), |tuple| tuple.0);
-    // This function's result will either be "end" (for `end else`) or "else"
-    // (for `else`)
-    let before_alternative = preceded(optgap, alt((parse_else_keyword, parse_end_else)));
-
-    let parse_alternative_expr = preceded(optgap, parse_expr);
-    let (i, opt_alternative_info) = opt(tuple((before_alternative, parse_alternative_expr)))(i)?;
-
-    let has_end = match opt_alternative_info {
-        Some((before_str, _)) if before_str == "end" => true,
-        _ => false,
+    let parse_else_keyword = |i: &'a str| parse_specific_keyword(i, "else");
+    let parse_else = |i: &'a str| map(parse_else_keyword, |_| ())(i);
+    let parse_alt_do_block = |i: &'a str| {
+        parse_do_block_with_no_end_keyword(i, parse_else)
     };
 
-    if has_end && !has_do {
-        todo!();
-    }
+    let parse_exprs = alt((
+        parse_do_block,
+        parse_alt_do_block,
+        map(parse_expr, DoBlock::new_single_expr),
+    ));
 
-    let opt_alternative = opt_alternative_info.map(|tuple| tuple.1);
+    let parse_else_keyword = |i: &'a str| parse_specific_keyword(i, "else");
+    let (i, consequent) = preceded(pair(optgap, parse_else_keyword), parse_exprs)(i)?;
 
-    let if_struct = If::new(condition, consequent, opt_alternative);
+    // Parse the alternative Expr or DoBlock:
+
+    let parse_exprs = preceded(optgap, alt((
+        parse_do_block,
+        map(parse_expr, DoBlock::new_single_expr),
+    )));
+    let (i, opt_alternative) = opt(parse_exprs)(i)?;
+
+    let opt_alternative = opt_alternative.map(|do_block| Expr::DoBlock(do_block));
+    let if_struct = If::new(condition, Expr::DoBlock(consequent), opt_alternative);
     Ok((i, if_struct))
 }
 
@@ -67,7 +64,11 @@ pub struct If {
 }
 
 impl If {
-    fn new(condition: Expr, consequent: Expr, alternative: Option<Expr>) -> Self {
+    fn new(
+        condition: Expr,
+        consequent: Expr,
+        alternative: Option<Expr>,
+    ) -> Self {
         Self {
             condition,
             consequent,
@@ -167,6 +168,12 @@ pub struct DoBlock {
 impl DoBlock {
     fn new(exprs: Exprs) -> Self {
         Self { exprs }
+    }
+
+    fn new_single_expr(expr: Expr) -> Self {
+        Self {
+            exprs: Exprs::new(vec![expr])
+        }
     }
 }
 
@@ -633,58 +640,61 @@ fn parse_id(i: &str) -> IResult<&str, Id> {
     Ok((i, id))
 }
 
-fn parse_specific_keyword<'a>(i: &'a str, target_keyword: &str) -> IResult<&'a str, &'a str> {
-    let (i, word) = peek(terminated(keyword, terminators))(i)?;
+fn parse_specific_keyword<'a>(
+    i: &'a str,
+    target_keyword: &str,
+) -> IResult<&'a str, String> {
+    let parse_lower_word = map(
+        many1(one_of(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_",
+        )),
+        |char_vec| char_vec.into_iter().collect::<String>(),
+    );
+    let (i, word) = peek(parse_lower_word)(i)?;
     if word == target_keyword {
-        keyword(i)
+        let mut parse_lower_word = map(many1(one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_")), |char_vec| char_vec.into_iter().collect::<String>());
+        parse_lower_word(i)
     } else {
-        // TODO is this the right approach to returning errors?
+        // TODO is this the right approach to returning errors? Prob not
         Err(nom::Err::Error((i, nom::error::ErrorKind::Tag)))
     }
 }
 
-fn parse_keyword(i: &str) -> IResult<&str, &str> {
-    let (i, _) = peek(terminated(keyword, terminators))(i)?;
-    keyword(i)
-}
+fn parse_keyword(i: &str) -> IResult<&str, String> {
+    let parse_and = |i| parse_specific_keyword(i, "and");
+    let parse_catch = |i| parse_specific_keyword(i, "catch");
+    let parse_defcomp = |i| parse_specific_keyword(i, "defcomp");
+    let parse_deflinks = |i| parse_specific_keyword(i, "deflinks");
+    let parse_do = |i| parse_specific_keyword(i, "do");
+    let parse_else = |i| parse_specific_keyword(i, "else");
+    let parse_end = |i| parse_specific_keyword(i, "end");
+    let parse_false = |i| parse_specific_keyword(i, "false");
+    let parse_if = |i| parse_specific_keyword(i, "if");
+    let parse_not = |i| parse_specific_keyword(i, "not");
+    let parse_null = |i| parse_specific_keyword(i, "null");
+    let parse_or = |i| parse_specific_keyword(i, "or");
+    let parse_return = |i| parse_specific_keyword(i, "return");
+    let parse_throw = |i| parse_specific_keyword(i, "throw");
+    let parse_true = |i| parse_specific_keyword(i, "true");
+    let parse_try = |i| parse_specific_keyword(i, "try");
 
-/// We must encounter one these symbols after a keyword, they determine
-/// when the keyword has ended.
-fn terminators(i: &str) -> IResult<&str, &str> {
     alt((
-        map(gap, |_| "whitespace-placeholder"),
-        tag("("),
-        tag(")"),
-        tag("="),
-        tag("{"),
-        tag("}"),
-        tag("["),
-        tag("]"),
-        tag("@"),
-        tag("-"),
-        tag("\""),
-        tag("`"),
-    ))(i)
-}
-
-fn keyword(i: &str) -> IResult<&str, &str> {
-    alt((
-        tag("and"),
-        tag("catch"),
-        tag("defcomp"),
-        tag("deflinks"),
-        tag("do"),
-        tag("else"),
-        tag("end"),
-        tag("false"),
-        tag("if"),
-        tag("not"),
-        tag("null"),
-        tag("or"),
-        tag("return"),
-        tag("throw"),
-        tag("true"),
-        tag("try"),
+        parse_and,
+        parse_catch,
+        parse_defcomp,
+        parse_deflinks,
+        parse_do,
+        parse_else,
+        parse_end,
+        parse_false,
+        parse_if,
+        parse_not,
+        parse_null,
+        parse_or,
+        parse_return,
+        parse_throw,
+        parse_true,
+        parse_try,
     ))(i)
 }
 
@@ -799,12 +809,30 @@ fn parse_do_block_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::new_do_block(do_block)))
 }
 
-fn parse_do_block(input: &str) -> IResult<&str, DoBlock> {
-    let (input, _) = terminated(tag("do"), opt(gap))(input)?;
-    let ending = preceded(opt(gap), tag("end"));
-    let (input, exprs) = terminated(parse_exprs, ending)(input)?;
+// TODO use this function in try-do block
+fn parse_do_block_with_no_end_keyword<'a, F>(
+    i: &'a str,
+    parse_terminator: F,
+) -> IResult<&'a str, DoBlock>
+where
+    F: FnMut(&'a str) -> IResult<&'a str, ()>,
+{
+    let parse_do_keyword = |i| parse_specific_keyword(i, "do");
+    let (i, _) = pair(parse_do_keyword, optgap)(i)?;
+    let ending = pair(optgap, parse_terminator);
+    let (i, exprs) = terminated(parse_exprs, peek(ending))(i)?;
     let do_block = DoBlock::new(exprs);
-    Ok((input, do_block))
+    Ok((i, do_block))
+}
+
+fn parse_do_block(i: &str) -> IResult<&str, DoBlock> {
+    let parse_do_keyword = |i| parse_specific_keyword(i, "do");
+    let (i, _) = pair(parse_do_keyword, optgap)(i)?;
+    let parse_end_keyword = |i| parse_specific_keyword(i, "end");
+    let ending = pair(optgap, parse_end_keyword);
+    let (i, exprs) = terminated(parse_exprs, ending)(i)?;
+    let do_block = DoBlock::new(exprs);
+    Ok((i, do_block))
 }
 
 fn parse_assignment_expr(input: &str) -> IResult<&str, Expr> {
@@ -896,18 +924,32 @@ fn parse_naive_time(i: &str) -> IResult<&str, NaiveTime> {
     }
 
     let secs = match opt_secs_str {
-        Some(secs_str) => secs_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
+        Some(secs_str) => secs_str
+            .into_iter()
+            .collect::<String>()
+            .parse()
+            .expect("Should parse as an int"),
         None => 0,
     };
 
     let millisecs = match opt_millisecs_str {
-        Some(millisecs_str) => millisecs_str.parse().expect("Should parse as an int"),
+        Some(millisecs_str) => {
+            millisecs_str.parse().expect("Should parse as an int")
+        }
         None => 0,
     };
 
     let time = NaiveTime::from_hms_milli(
-        hours_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
-        mins_str.into_iter().collect::<String>().parse().expect("Should parse as an int"),
+        hours_str
+            .into_iter()
+            .collect::<String>()
+            .parse()
+            .expect("Should parse as an int"),
+        mins_str
+            .into_iter()
+            .collect::<String>()
+            .parse()
+            .expect("Should parse as an int"),
         secs,
         millisecs,
     );
@@ -986,7 +1028,8 @@ fn parse_number_literal(i: &str) -> IResult<&str, Literal> {
     let (i, exponent_info) =
         opt(preceded(alt((tag("e"), tag("E"))), exponent_num))(i)?;
 
-    let unit_chars = one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ%_/$");
+    let unit_chars =
+        one_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ%_/$");
     let (i, unit) = opt(many1(unit_chars))(i)?;
     let unit = unit.map(|s| s.into_iter().collect());
 
@@ -1332,6 +1375,51 @@ mod tests {
 
     fn int_expr(n: i32) -> Expr {
         Expr::new_literal(Literal::int(n))
+    }
+
+    fn bool_expr(b: bool) -> Expr {
+        Expr::new_literal(Literal::Bool(b))
+    }
+
+    #[test]
+    fn parse_if_works_for_single_line_if_with_no_else() {
+        let s = "if (true) 1 ";
+        let e = If::new(bool_expr(true), int_expr(1), None);
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 ";
+        let e = If::new(bool_expr(true), int_expr(1), None);
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_single_line_if_with_else() {
+        let s = "if (true) 1 else 2 ";
+        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 else 2 ";
+        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 elseSomeFunction() ";
+        let e = If::new(bool_expr(true), int_expr(1), None);
+        assert_eq!(parse_if(s).unwrap(), (" elseSomeFunction() ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_single_line_if_with_end_else() {
+        let s = "if (true) do 1 end else 2 ";
+        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)do 1 end else 2 ";
+        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 endSomeFunction() ";
+        let e = If::new(bool_expr(true), int_expr(1), None);
+        assert_eq!(parse_if(s).unwrap(), (" endSomeFunction() ", e));
     }
 
     #[test]
@@ -1845,8 +1933,12 @@ mod tests {
         assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
 
         let s = "-123.456kPa ";
-        let expected =
-            Literal::num("-123".to_owned(), Some("456".to_owned()), None, Some("kPa".to_owned()));
+        let expected = Literal::num(
+            "-123".to_owned(),
+            Some("456".to_owned()),
+            None,
+            Some("kPa".to_owned()),
+        );
         assert_eq!(parse_number_literal(s).unwrap(), (" ", expected));
     }
 
@@ -1983,24 +2075,34 @@ mod tests {
 
     #[test]
     fn parse_specific_keyword_works() {
-        assert_eq!(parse_specific_keyword("do{", "do").unwrap(), ("{", "do"));
-        assert_eq!(parse_specific_keyword("do\n", "do").unwrap(), ("\n", "do"));
+        assert_eq!(
+            parse_specific_keyword("do{", "do").unwrap(),
+            ("{", "do".to_owned())
+        );
+        assert_eq!(
+            parse_specific_keyword("do\n", "do").unwrap(),
+            ("\n", "do".to_owned())
+        );
         assert!(parse_specific_keyword("doFunction", "do").is_err());
     }
 
     #[test]
     fn parse_keyword_works() {
-        assert_eq!(parse_keyword("and(").unwrap(), ("(", "and"));
-        assert_eq!(parse_keyword("catch\"").unwrap(), ("\"", "catch"));
-        assert_eq!(parse_keyword("try[").unwrap(), ("[", "try"));
-        assert_eq!(parse_keyword("throw{").unwrap(), ("{", "throw"));
-        assert_eq!(parse_keyword("do@").unwrap(), ("@", "do"));
-        assert_eq!(parse_keyword("end)").unwrap(), (")", "end"));
-        assert_eq!(parse_keyword("end}").unwrap(), ("}", "end"));
-        assert_eq!(parse_keyword("end]").unwrap(), ("]", "end"));
-        assert_eq!(parse_keyword("do\n").unwrap(), ("\n", "do"));
-        assert_eq!(parse_keyword("not ").unwrap(), (" ", "not"));
-        assert_eq!(parse_keyword("catch`").unwrap(), ("`", "catch"));
+        assert_eq!(parse_keyword("and(").unwrap(), ("(", "and".to_owned()));
+        assert_eq!(
+            parse_keyword("catch\"").unwrap(),
+            ("\"", "catch".to_owned())
+        );
+        assert_eq!(parse_keyword("try[").unwrap(), ("[", "try".to_owned()));
+        assert_eq!(parse_keyword("throw{").unwrap(), ("{", "throw".to_owned()));
+        assert_eq!(parse_keyword("do@").unwrap(), ("@", "do".to_owned()));
+        assert_eq!(parse_keyword("end)").unwrap(), (")", "end".to_owned()));
+        assert_eq!(parse_keyword("end}").unwrap(), ("}", "end".to_owned()));
+        assert_eq!(parse_keyword("end]").unwrap(), ("]", "end".to_owned()));
+        assert_eq!(parse_keyword("do\n").unwrap(), ("\n", "do".to_owned()));
+        assert_eq!(parse_keyword("not ").unwrap(), (" ", "not".to_owned()));
+        assert_eq!(parse_keyword("catch`").unwrap(), ("`", "catch".to_owned()));
+        assert_eq!(parse_keyword("catch").unwrap(), ("", "catch".to_owned()));
     }
 
     #[test]
