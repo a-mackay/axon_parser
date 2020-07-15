@@ -1543,6 +1543,38 @@ mod tests {
         parse_function(f).unwrap();
     }
 
+    #[test]
+    fn parsing_intermediate_function_works() {
+        let f = r#"
+        (siteRefOrPlaceholder,dates) => do
+equip: read(equip and siteRefOrPlaceholder)
+
+volumes: readAll(volume and equipRef == equip->id)
+voumeHistory: volumes.hrnl(dates).hisRollup(avg,15min).hisFindAll(value => not isNaNanOrNull(value))
+
+//scenario 1
+volumeDown:voumeHistory.sfxHisDelta.hisFindAll(x=>x<0)
+scenarioOneConsumption: volumeDown.foldCol("v0",sum).abs
+
+//scenario 2
+volumeUp:voumeHistory.sfxHisDelta.hisFindAll(x=>x>0)
+        gas: toGas(equip)
+        gasStatusPoint: gas.toPoint("status")
+
+        gasOnPeriods: gasStatusPoint
+            .hisReadNoLimit(dates)
+            .hisFindPeriods(isGasOn => isGasOn)
+
+scenarioTwoConsumption: volumeUp.hisFindInPeriods(gasOnPeriods).size*5*15 // 15 assumption
+
+totalUsage: scenarioOneConsumption + scenarioTwoConsumption
+return totalUsage
+
+end
+        "#;
+        parse_function(f).unwrap();
+    }
+
     fn simple_multexpr() -> MultExpr {
         parse_multexpr("-0").unwrap().1
     }
