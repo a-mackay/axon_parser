@@ -16,6 +16,43 @@ pub fn parse_function(input: &str) -> Result<LambdaMany, ()> {
     Ok(lambda_many)
 }
 
+fn parse_if(i: &str) -> IResult<&str, If> {
+    let conditional_start = tuple((tag("if"), optgap, tag("(")));
+    let (i, _) = terminated(conditional_start, optgap)(i)?;
+    let conditional_end = pair(optgap, tag(")"));
+    let (i, condition) = terminated(parse_expr, conditional_end)(i)?;
+
+    let parse_do = preceded(optgap, parse_do_keyword);
+    let before_consequent = alt((map(optgap, |_| "gap"), parse_do));
+    let (i, str_before_consequent) = before_consequent(i)?;
+
+    let has_do = str_before_consequent == "do";
+
+    let (i, consequent) = preceded(optgap, parse_expr)(i)?;
+    // ``` ["else" <expr>]```
+}
+
+fn optgap(i: &str) -> IResult<&str, ()> {
+    map(opt(gap), |_| ())(i)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct If {
+    condition: Expr,
+    consequent: Expr,
+    alternative: Option<Expr>,
+}
+
+impl If {
+    fn new(condition: Expr, consequent: Expr, alternative: Option<Expr>) -> Self {
+        Self {
+            condition,
+            consequent,
+            alternative,
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct TryCatchBlock {
     try_expr: Expr,
@@ -467,6 +504,7 @@ pub enum Expr {
         var_name: Id,
         expr: Box<Expr>,
     },
+    If(Box<If>),
     Return {
         expr: Box<Expr>,
     },
@@ -486,6 +524,10 @@ impl Expr {
             var_name: id,
             expr: Box::new(expr),
         }
+    }
+
+    fn new_if(if_struct: If) -> Self {
+        Self::If(Box::new(if_struct))
     }
 
     fn new_assign(assign_expr: AssignExpr) -> Self {
@@ -568,9 +610,19 @@ fn parse_id(i: &str) -> IResult<&str, Id> {
     Ok((i, id))
 }
 
-fn parse_keyword(i: &str) -> IResult<&str, ()> {
+fn parse_do_keyword(i: &str) -> IResult<&str, &str> {
+    let (i, word) = peek(terminated(keyword, terminators))(i)?;
+    if word == "do" {
+        keyword(i)
+    } else {
+        // TODO is this the right approach to returning errors?
+        Err(nom::Err::Error((i, nom::error::ErrorKind::Tag)))
+    }
+}
+
+fn parse_keyword(i: &str) -> IResult<&str, &str> {
     let (i, _) = peek(terminated(keyword, terminators))(i)?;
-    map(keyword, |_| ())(i)
+    keyword(i)
 }
 
 /// We must encounter one these symbols after a keyword, they determine
@@ -934,6 +986,7 @@ fn parse_number_literal(i: &str) -> IResult<&str, Literal> {
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
+        map(parse_if, Expr::new_if),
         parse_try_catch_expr,
         parse_return_expr,
         parse_throw_expr,
@@ -1906,18 +1959,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_do_keyword_works() {
+        assert_eq!(parse_do_keyword("do{").unwrap(), ("{", "do"));
+        assert_eq!(parse_do_keyword("do\n").unwrap(), ("\n", "do"));
+        assert!(parse_do_keyword("doFunction").is_err());
+    }
+
+    #[test]
     fn parse_keyword_works() {
-        assert_eq!(parse_keyword("and(").unwrap(), ("(", ()));
-        assert_eq!(parse_keyword("catch\"").unwrap(), ("\"", ()));
-        assert_eq!(parse_keyword("try[").unwrap(), ("[", ()));
-        assert_eq!(parse_keyword("throw{").unwrap(), ("{", ()));
-        assert_eq!(parse_keyword("do@").unwrap(), ("@", ()));
-        assert_eq!(parse_keyword("end)").unwrap(), (")", ()));
-        assert_eq!(parse_keyword("end}").unwrap(), ("}", ()));
-        assert_eq!(parse_keyword("end]").unwrap(), ("]", ()));
-        assert_eq!(parse_keyword("do\n").unwrap(), ("\n", ()));
-        assert_eq!(parse_keyword("not ").unwrap(), (" ", ()));
-        assert_eq!(parse_keyword("catch`").unwrap(), ("`", ()));
+        assert_eq!(parse_keyword("and(").unwrap(), ("(", "and"));
+        assert_eq!(parse_keyword("catch\"").unwrap(), ("\"", "catch"));
+        assert_eq!(parse_keyword("try[").unwrap(), ("[", "try"));
+        assert_eq!(parse_keyword("throw{").unwrap(), ("{", "throw"));
+        assert_eq!(parse_keyword("do@").unwrap(), ("@", "do"));
+        assert_eq!(parse_keyword("end)").unwrap(), (")", "end"));
+        assert_eq!(parse_keyword("end}").unwrap(), ("}", "end"));
+        assert_eq!(parse_keyword("end]").unwrap(), ("]", "end"));
+        assert_eq!(parse_keyword("do\n").unwrap(), ("\n", "do"));
+        assert_eq!(parse_keyword("not ").unwrap(), (" ", "not"));
+        assert_eq!(parse_keyword("catch`").unwrap(), ("`", "catch"));
     }
 
     #[test]
