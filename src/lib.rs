@@ -1445,6 +1445,92 @@ mod tests {
     }
 
     #[test]
+    fn parse_if_works_for_multi_line_if_with_no_else() {
+        let s = "if (true)\n    1 ";
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)\n     1 ";
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_multi_line_if_with_else() {
+        let s = "if (true)\n 1 \nelse\n 2 ";
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)\n1 else \n2 ";
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 elseSomeFunction() ";
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
+        assert_eq!(parse_if(s).unwrap(), (" elseSomeFunction() ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_multi_line_if_with_end_else() {
+        let s = "if (true) do\n 1\n end\nelse \n2 ";
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)\ndo 1\n end \nelse 2 ";
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+
+        let s = "if(true)1 endSomeFunction() ";
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
+        assert_eq!(parse_if(s).unwrap(), (" endSomeFunction() ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_if_in_else() {
+        let s = "if (true) do\n 1\n end\nelse if (false)\ndo 2 end ";
+        let nested_if =
+            If::new(bool_expr(false), wrap_in_do_block(int_expr(2)), None);
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(Expr::If(Box::new(nested_if)))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_if_works_for_if_in_else2() {
+        let s = "if (true) do\n 1\n end\nelse if (false)\ndo 2 end else 3 ";
+        let nested_if = If::new(
+            bool_expr(false),
+            wrap_in_do_block(int_expr(2)),
+            Some(wrap_in_do_block(int_expr(3))),
+        );
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(Expr::If(Box::new(nested_if)))),
+        );
+        assert_eq!(parse_if(s).unwrap(), (" ", e));
+    }
+
+    #[test]
     fn parsing_basic_function_works() {
         let f = r#"
         () => do
