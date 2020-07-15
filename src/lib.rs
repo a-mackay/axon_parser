@@ -26,29 +26,35 @@ fn parse_if<'a>(i: &'a str) -> IResult<&'a str, If> {
 
     let parse_else_keyword = |i: &'a str| parse_specific_keyword(i, "else");
     let parse_else = |i: &'a str| map(parse_else_keyword, |_| ())(i);
-    let parse_alt_do_block = |i: &'a str| {
-        parse_do_block_with_no_end_keyword(i, parse_else)
-    };
+    let parse_alt_do_block =
+        |i: &'a str| parse_do_block_with_no_end_keyword(i, parse_else);
 
-    let parse_exprs = alt((
-        parse_do_block,
-        parse_alt_do_block,
-        map(parse_expr, DoBlock::new_single_expr),
-    ));
+    let parse_exprs = preceded(
+        optgap,
+        alt((
+            parse_do_block,
+            parse_alt_do_block,
+            map(parse_expr, DoBlock::new_single_expr),
+        )),
+    );
 
-    let parse_else_keyword = |i: &'a str| parse_specific_keyword(i, "else");
-    let (i, consequent) = preceded(pair(optgap, parse_else_keyword), parse_exprs)(i)?;
+    let (i, consequent) = preceded(optgap, parse_exprs)(i)?;
 
     // Parse the alternative Expr or DoBlock:
 
-    let parse_exprs = preceded(optgap, alt((
-        parse_do_block,
-        map(parse_expr, DoBlock::new_single_expr),
-    )));
-    let (i, opt_alternative) = opt(parse_exprs)(i)?;
+    let parse_else_keyword = |i: &'a str| parse_specific_keyword(i, "else");
 
-    let opt_alternative = opt_alternative.map(|do_block| Expr::DoBlock(do_block));
-    let if_struct = If::new(condition, Expr::DoBlock(consequent), opt_alternative);
+    let parse_exprs = preceded(
+        optgap,
+        alt((parse_do_block, map(parse_expr, DoBlock::new_single_expr))),
+    );
+    let (i, opt_alternative) =
+        opt(preceded(pair(optgap, parse_else_keyword), parse_exprs))(i)?;
+
+    let opt_alternative =
+        opt_alternative.map(|do_block| Expr::DoBlock(do_block));
+    let if_struct =
+        If::new(condition, Expr::DoBlock(consequent), opt_alternative);
     Ok((i, if_struct))
 }
 
@@ -172,7 +178,7 @@ impl DoBlock {
 
     fn new_single_expr(expr: Expr) -> Self {
         Self {
-            exprs: Exprs::new(vec![expr])
+            exprs: Exprs::new(vec![expr]),
         }
     }
 }
@@ -1384,41 +1390,57 @@ mod tests {
     #[test]
     fn parse_if_works_for_single_line_if_with_no_else() {
         let s = "if (true) 1 ";
-        let e = If::new(bool_expr(true), int_expr(1), None);
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
         let s = "if(true)1 ";
-        let e = If::new(bool_expr(true), int_expr(1), None);
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
         assert_eq!(parse_if(s).unwrap(), (" ", e));
     }
 
     #[test]
     fn parse_if_works_for_single_line_if_with_else() {
         let s = "if (true) 1 else 2 ";
-        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
         let s = "if(true)1 else 2 ";
-        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
         let s = "if(true)1 elseSomeFunction() ";
-        let e = If::new(bool_expr(true), int_expr(1), None);
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
         assert_eq!(parse_if(s).unwrap(), (" elseSomeFunction() ", e));
     }
 
     #[test]
     fn parse_if_works_for_single_line_if_with_end_else() {
         let s = "if (true) do 1 end else 2 ";
-        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
         let s = "if(true)do 1 end else 2 ";
-        let e = If::new(bool_expr(true), int_expr(1), Some(int_expr(2)));
+        let e = If::new(
+            bool_expr(true),
+            wrap_in_do_block(int_expr(1)),
+            Some(wrap_in_do_block(int_expr(2))),
+        );
         assert_eq!(parse_if(s).unwrap(), (" ", e));
 
         let s = "if(true)1 endSomeFunction() ";
-        let e = If::new(bool_expr(true), int_expr(1), None);
+        let e = If::new(bool_expr(true), wrap_in_do_block(int_expr(1)), None);
         assert_eq!(parse_if(s).unwrap(), (" endSomeFunction() ", e));
     }
 
