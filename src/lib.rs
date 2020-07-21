@@ -10,10 +10,19 @@ use nom::{
 };
 
 pub fn parse_function(input: &str) -> Result<LambdaMany, ()> {
+    let input = remove_line_comments(input);
     let (input, _) =
-        opt(gap)(input).expect("since this is optional, it should never fail");
+        opt(gap)(&input).expect("since this is optional, it should never fail");
     let (_, lambda_many) = parse_lambda_many(input).unwrap(); //TODO
     Ok(lambda_many)
+}
+
+pub fn remove_line_comments(i: &str) -> String {
+    i.lines()
+        .into_iter()
+        .filter(|line| !line.trim().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn parse_if<'a>(i: &'a str) -> IResult<&'a str, If> {
@@ -360,12 +369,12 @@ impl TermExpr {
 
 #[derive(Debug, Eq, PartialEq)]
 struct UnaryExpr {
-    sign: UnaryExprSign,
+    sign: Option<UnaryExprSign>,
     term_expr: TermExpr,
 }
 
 impl UnaryExpr {
-    fn new(sign: UnaryExprSign, term_expr: TermExpr) -> Self {
+    fn new(sign: Option<UnaryExprSign>, term_expr: TermExpr) -> Self {
         Self { sign, term_expr }
     }
 }
@@ -535,6 +544,7 @@ pub enum Expr {
         var_name: Id,
         expr: Box<Expr>,
     },
+    CondOr(CondOrExpr),
     DoBlock(DoBlock),
     Def {
         var_name: Id,
@@ -1058,6 +1068,7 @@ fn parse_number_literal(i: &str) -> IResult<&str, Literal> {
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
+        map(parse_condorexpr, Expr::CondOr),
         map(parse_if, Expr::new_if),
         parse_try_catch_expr,
         parse_return_expr,
@@ -1067,25 +1078,25 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
         parse_def_expr,
         parse_assignment_expr,
         map(parse_termexpr, Expr::TermExpr),
-        parse_assignexpr_expr,
+        // parse_assignexpr_expr,
     ))(input)
 }
 
-fn parse_assignexpr_expr(input: &str) -> IResult<&str, Expr> {
-    map(parse_assignexpr, |assignexpr| Expr::new_assign(assignexpr))(input)
-}
+// fn parse_assignexpr_expr(input: &str) -> IResult<&str, Expr> {
+//     map(parse_assignexpr, |assignexpr| Expr::new_assign(assignexpr))(input)
+// }
 
-fn parse_assignexpr(input: &str) -> IResult<&str, AssignExpr> {
-    let (input, first_cond_or_expr) = parse_condorexpr(input)?;
-    let (input, _) = opt(gap)(input)?;
-    let parse_equals = terminated(tag("="), opt(gap));
-    let mut parse_next_cond_or_expr =
-        opt(preceded(parse_equals, parse_assignexpr));
-    let (input, opt_cond_or_expr) = parse_next_cond_or_expr(input)?;
+// fn parse_assignexpr(input: &str) -> IResult<&str, AssignExpr> {
+//     let (input, first_cond_or_expr) = parse_condorexpr(input)?;
+//     let (input, _) = opt(gap)(input)?;
+//     let parse_equals = terminated(tag("="), opt(gap));
+//     let mut parse_next_cond_or_expr =
+//         opt(preceded(parse_equals, parse_assignexpr));
+//     let (input, opt_cond_or_expr) = parse_next_cond_or_expr(input)?;
 
-    let assign_expr = AssignExpr::new(first_cond_or_expr, opt_cond_or_expr);
-    Ok((input, assign_expr))
-}
+//     let assign_expr = AssignExpr::new(first_cond_or_expr, opt_cond_or_expr);
+//     Ok((input, assign_expr))
+// }
 
 fn parse_condorexpr(input: &str) -> IResult<&str, CondOrExpr> {
     let (input, first_cond_and_expr) = parse_condandexpr(input)?;
@@ -1113,6 +1124,13 @@ fn parse_compareexpr(input: &str) -> IResult<&str, CompareExpr> {
     let (input, compared_range_exprs) = many0(parse_comparedrangeexprs)(input)?;
     let compare_expr = CompareExpr::new(first_range_expr, compared_range_exprs);
     Ok((input, compare_expr))
+
+    let (input, left_add_expr) = parse_addexpr(input)?;
+    let mut parse_dots = delimited(opt(gap), tag(".."), opt(gap));
+    let (input, _) = parse_dots(input)?;
+    let (input, right_add_expr) = parse_addexpr(input)?;
+    let range_expr = RangeExpr::new(left_add_expr, right_add_expr);
+    Ok((input, range_expr))
 }
 
 fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
@@ -1183,11 +1201,13 @@ fn parse_operatedunaryexprs(i: &str) -> IResult<&str, OperatedUnaryExpr> {
 fn parse_unaryexpr(i: &str) -> IResult<&str, UnaryExpr> {
     let parse_minus = terminated(tag("-"), opt(gap));
     let parse_not = terminated(tag("not"), gap);
-    let (i, sign) = alt((parse_minus, parse_not))(i)?;
+    let (i, opt_sign) = opt(alt((parse_minus, parse_not)))(i)?;
     let (i, term_expr) = parse_termexpr(i)?;
 
-    let unary_expr_sign = UnaryExprSign::from_str(sign)
-        .expect("Unimplemented unary expression sign");
+    let unary_expr_sign = opt_sign.map(|sign| {
+        UnaryExprSign::from_str(sign)
+            .expect("Unimplemented unary expression sign")
+    });
     let unary_expr = UnaryExpr::new(unary_expr_sign, term_expr);
     Ok((i, unary_expr))
 }
@@ -1212,10 +1232,14 @@ fn parse_term_base(i: &str) -> IResult<&str, TermBase> {
 }
 
 fn parse_grouped_expr(i: &str) -> IResult<&str, Expr> {
-    let open_paren = terminated(tag("("), opt(gap));
-    let close_paren = preceded(opt(gap), tag(")"));
-    let mut parse_grouped = delimited(open_paren, parse_expr, close_paren);
-    parse_grouped(i)
+    let open_paren = terminated(tag("("), optgap);
+    let (i, expr) = preceded(open_paren, parse_expr)(i)?;
+
+    println!("{:?}", expr);
+
+    let (i, _) = preceded(optgap, tag(")"))(i)?;
+
+    Ok((i, expr))
 }
 
 fn parse_term_chain(i: &str) -> IResult<&str, TermChain> {
@@ -1385,6 +1409,55 @@ mod tests {
 
     fn bool_expr(b: bool) -> Expr {
         Expr::new_literal(Literal::Bool(b))
+    }
+
+    fn term_base_into_addexpr(base: TermBase) -> AddExpr {
+        AddExpr::new(
+            MultExpr::new(
+                UnaryExpr::new(None, TermExpr::new(base, vec![])),
+                vec![],
+            ),
+            vec![],
+        )
+    }
+
+    #[test]
+    fn parse_rangeexpr_works_for_int_range() {
+        let s = "1..5 ";
+        let left = term_base_into_addexpr(TermBase::Literal(Literal::int(1)));
+        let right = term_base_into_addexpr(TermBase::Literal(Literal::int(5)));
+        let e = RangeExpr::new(left, right);
+        assert_eq!(parse_rangeexpr(s).unwrap(), (" ", e));
+
+        let s = "1 ..\n5 ";
+        let left = term_base_into_addexpr(TermBase::Literal(Literal::int(1)));
+        let right = term_base_into_addexpr(TermBase::Literal(Literal::int(5)));
+        let e = RangeExpr::new(left, right);
+        assert_eq!(parse_rangeexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_rangeexpr_works_for_var_name_range() {
+        let s = "1..testVar ";
+        let left = term_base_into_addexpr(TermBase::Literal(Literal::int(1)));
+        let right = term_base_into_addexpr(TermBase::Var(Id::new("testVar")));
+        let e = RangeExpr::new(left, right);
+        assert_eq!(parse_rangeexpr(s).unwrap(), (" ", e));
+
+        let s = "someVar .. \ntestVar ";
+        let left = term_base_into_addexpr(TermBase::Var(Id::new("someVar")));
+        let right = term_base_into_addexpr(TermBase::Var(Id::new("testVar")));
+        let e = RangeExpr::new(left, right);
+        assert_eq!(parse_rangeexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_rangeexpr_works_for_expr_range() {
+        let s = "(today() - 7day)..yesterday() ";
+        let left = term_base_into_addexpr(TermBase::Literal(Literal::int(1)));
+        let right = term_base_into_addexpr(TermBase::Var(Id::new("testVar")));
+        let e = RangeExpr::new(left, right);
+        assert_eq!(parse_rangeexpr(s).unwrap(), (" ", e));
     }
 
     #[test]
@@ -1606,6 +1679,33 @@ end
     }
 
     #[test]
+    fn parse_addexpr_works_for_simple_expr() {
+        let s = "today() - 7day ";
+
+        let left_base = TermBase::Var(Id::new("today"));
+        let left_chain = TermChain::Call(Call::new(vec![], None));
+        let first_mult = MultExpr::new(
+            UnaryExpr::new(None, TermExpr::new(left_base, vec![left_chain])),
+            vec![],
+        );
+        let next_base = TermBase::Literal(Literal::num(
+            "7".to_owned(),
+            None,
+            None,
+            Some("day".to_owned()),
+        ));
+        let next_mult = MultExpr::new(
+            UnaryExpr::new(None, TermExpr::new(next_base, vec![])),
+            vec![],
+        );
+
+        let remaining_signed_mult_exprs =
+            vec![SignedMultExpr::new(false, next_mult)];
+        let e = AddExpr::new(first_mult, remaining_signed_mult_exprs);
+        assert_eq!(parse_addexpr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
     fn parse_multexpr_works() {
         let s = "-0 ";
         let e = MultExpr::new(simple_unaryexpr(), vec![]);
@@ -1630,14 +1730,14 @@ end
     fn parse_unaryexpr_minus_works() {
         let s = "-5 ";
         let e = UnaryExpr::new(
-            UnaryExprSign::Minus,
+            Some(UnaryExprSign::Minus),
             TermExpr::new(TermBase::Literal(Literal::int(5)), vec![]),
         );
         assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
 
         let s = "- \n 5 ";
         let e = UnaryExpr::new(
-            UnaryExprSign::Minus,
+            Some(UnaryExprSign::Minus),
             TermExpr::new(TermBase::Literal(Literal::int(5)), vec![]),
         );
         assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
@@ -1647,14 +1747,31 @@ end
     fn parse_unaryexpr_not_works() {
         let s = "not someBool ";
         let e = UnaryExpr::new(
-            UnaryExprSign::Not,
+            Some(UnaryExprSign::Not),
             TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
         );
         assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
 
         let s = "not\nsomeBool ";
         let e = UnaryExpr::new(
-            UnaryExprSign::Not,
+            Some(UnaryExprSign::Not),
+            TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+    }
+
+    #[test]
+    fn parse_unaryexpr_works_with_no_sign() {
+        let s = "someBool ";
+        let e = UnaryExpr::new(
+            None,
+            TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
+        );
+        assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
+
+        let s = "someBool ";
+        let e = UnaryExpr::new(
+            None,
             TermExpr::new(TermBase::Var(Id::new("someBool")), vec![]),
         );
         assert_eq!(parse_unaryexpr(s).unwrap(), (" ", e));
@@ -1667,6 +1784,23 @@ end
         assert_eq!(parse_grouped_expr(s).unwrap(), (" ", e));
 
         let s = "(functionName()) ";
+        let e = Expr::TermExpr(TermExpr::new(
+            TermBase::Var(Id::new("functionName")),
+            vec![TermChain::Call(Call::new(vec![], None))],
+        ));
+        assert_eq!(parse_grouped_expr(s).unwrap(), (" ", e))
+    }
+
+    #[test]
+    fn test() {
+        println!("here");
+        let result = parse_expr("today(").unwrap();
+        println!("{:?}", result);
+    }
+
+    #[test]
+    fn parse_grouped_expr_works_for_complex_expr() {
+        let s = "(today() - 7) ";
         let e = Expr::TermExpr(TermExpr::new(
             TermBase::Var(Id::new("functionName")),
             vec![TermChain::Call(Call::new(vec![], None))],
