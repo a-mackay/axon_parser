@@ -458,34 +458,34 @@ impl RangeExpr {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct ComparedRangeExpr {
+struct ComparedAddExpr {
     operator: ComparisonOperator,
-    range_expr: RangeExpr,
+    add_expr: AddExpr,
 }
 
-impl ComparedRangeExpr {
-    fn new(operator: ComparisonOperator, range_expr: RangeExpr) -> Self {
+impl ComparedAddExpr {
+    fn new(operator: ComparisonOperator, add_expr: AddExpr) -> Self {
         Self {
             operator,
-            range_expr,
+            add_expr,
         }
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct CompareExpr {
-    first_range_expr: RangeExpr,
-    compared_range_exprs: Vec<ComparedRangeExpr>,
+    first_add_expr: AddExpr,
+    compared_add_exprs: Vec<ComparedAddExpr>,
 }
 
 impl CompareExpr {
     fn new(
-        first_range_expr: RangeExpr,
-        compared_range_exprs: Vec<ComparedRangeExpr>,
+        first_add_expr: AddExpr,
+        compared_add_exprs: Vec<ComparedAddExpr>,
     ) -> Self {
         Self {
-            first_range_expr,
-            compared_range_exprs,
+            first_add_expr,
+            compared_add_exprs,
         }
     }
 }
@@ -1068,7 +1068,6 @@ fn parse_number_literal(i: &str) -> IResult<&str, Literal> {
 
 fn parse_expr(input: &str) -> IResult<&str, Expr> {
     alt((
-        map(parse_condorexpr, Expr::CondOr),
         map(parse_if, Expr::new_if),
         parse_try_catch_expr,
         parse_return_expr,
@@ -1077,6 +1076,7 @@ fn parse_expr(input: &str) -> IResult<&str, Expr> {
         parse_literal_expr, // TODO Axon grammar says literals are parsed in <assignExpr>
         parse_def_expr,
         parse_assignment_expr,
+        map(parse_condorexpr, Expr::CondOr),
         map(parse_termexpr, Expr::TermExpr),
         // parse_assignexpr_expr,
     ))(input)
@@ -1118,22 +1118,26 @@ fn parse_condandexpr(input: &str) -> IResult<&str, CondAndExpr> {
     Ok((input, cond_and_expr))
 }
 
-fn parse_compareexpr(input: &str) -> IResult<&str, CompareExpr> {
-    let (input, first_range_expr) = parse_rangeexpr(input)?;
-    let (input, _) = opt(gap)(input)?;
-    let (input, compared_range_exprs) = many0(parse_comparedrangeexprs)(input)?;
-    let compare_expr = CompareExpr::new(first_range_expr, compared_range_exprs);
-    Ok((input, compare_expr))
+fn parse_compareexpr(i: &str) -> IResult<&str, CompareExpr> {
+    // let (input, first_range_expr) = parse_rangeexpr(input)?;
+    // let (input, _) = opt(gap)(input)?;
+    // let (input, compared_range_exprs) = many0(parse_comparedrangeexprs)(input)?;
+    // let compare_expr = CompareExpr::new(first_range_expr, compared_range_exprs);
+    // Ok((input, compare_expr))
 
-    let (input, left_add_expr) = parse_addexpr(input)?;
-    let mut parse_dots = delimited(opt(gap), tag(".."), opt(gap));
-    let (input, _) = parse_dots(input)?;
-    let (input, right_add_expr) = parse_addexpr(input)?;
-    let range_expr = RangeExpr::new(left_add_expr, right_add_expr);
-    Ok((input, range_expr))
+    let (i, first_add_expr) = parse_addexpr(i)?;
+    let (i, remaining_compared_add_exprs) = many0(parse_comparedaddexprs)(i)?;
+
+    let compare_expr = CompareExpr::new(first_add_expr, remaining_compared_add_exprs);
+
+    // let mut parse_dots = delimited(opt(gap), tag(".."), opt(gap));
+    // let (i, _) = parse_dots(i)?;
+    // let (i, right_add_expr) = parse_addexpr(i)?;
+    // let range_expr = RangeExpr::new(first_add_expr, right_add_expr);
+    Ok((i, compare_expr))
 }
 
-fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
+fn parse_comparedaddexprs(i: &str) -> IResult<&str, ComparedAddExpr> {
     let operators = alt((
         tag("=="),
         tag("!="),
@@ -1144,13 +1148,32 @@ fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
         tag("<=>"),
     ));
     let (i, operator) = terminated(operators, opt(gap))(i)?;
-    let (i, range_expr) = parse_rangeexpr(i)?;
+    let (i, add_expr) = parse_addexpr(i)?;
 
     let comparison_op = ComparisonOperator::from_str(operator)
         .expect("Unimplemented comparison operator");
-    let comp_range_expr = ComparedRangeExpr::new(comparison_op, range_expr);
+    let comp_range_expr = ComparedAddExpr::new(comparison_op, add_expr);
     Ok((i, comp_range_expr))
 }
+
+// fn parse_comparedrangeexprs(i: &str) -> IResult<&str, ComparedRangeExpr> {
+//     let operators = alt((
+//         tag("=="),
+//         tag("!="),
+//         tag("<"),
+//         tag("<="),
+//         tag(">="),
+//         tag(">"),
+//         tag("<=>"),
+//     ));
+//     let (i, operator) = terminated(operators, opt(gap))(i)?;
+//     let (i, range_expr) = parse_rangeexpr(i)?;
+
+//     let comparison_op = ComparisonOperator::from_str(operator)
+//         .expect("Unimplemented comparison operator");
+//     let comp_range_expr = ComparedRangeExpr::new(comparison_op, range_expr);
+//     Ok((i, comp_range_expr))
+// }
 
 fn parse_rangeexpr(input: &str) -> IResult<&str, RangeExpr> {
     let (input, left_add_expr) = parse_addexpr(input)?;
@@ -1801,6 +1824,30 @@ end
     #[test]
     fn parse_grouped_expr_works_for_complex_expr() {
         let s = "(today() - 7) ";
+
+        let left_base = TermBase::Var(Id::new("today"));
+        let left_chain = TermChain::Call(Call::new(vec![], None));
+        let first_mult = MultExpr::new(
+            UnaryExpr::new(None, TermExpr::new(left_base, vec![left_chain])),
+            vec![],
+        );
+        let next_base = TermBase::Literal(Literal::num(
+            "7".to_owned(),
+            None,
+            None,
+            Some("day".to_owned()),
+        ));
+        let next_mult = MultExpr::new(
+            UnaryExpr::new(None, TermExpr::new(next_base, vec![])),
+            vec![],
+        );
+        let signed_mult = SignedMultExpr::new(false, next_mult);
+
+        let add_expr = AddExpr::new(first_mult, vec![signed_mult]);
+        let compare_expr = CompareExpr::new(add_expr, vec![]);
+        let cond_and = CondAndExpr::new(compare_expr, vec![]);
+        let e = CondOrExpr::new(cond_and, vec![]);
+
         let e = Expr::TermExpr(TermExpr::new(
             TermBase::Var(Id::new("functionName")),
             vec![TermChain::Call(Call::new(vec![], None))],
