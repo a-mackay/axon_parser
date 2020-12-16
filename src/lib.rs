@@ -11,22 +11,25 @@ fn parse_to_hash_map(axon: &str) -> HashMap<TagName, Val> {
     unimplemented!()
 }
 
-#[derive(Debug)]
-enum Val {
+#[derive(Debug, PartialEq)]
+pub enum Val {
     Dict(HashMap<TagName, Box<Val>>),
     List(Vec<Val>),
     Lit(Lit),
 }
 
-#[derive(Debug)]
-enum Lit {
+#[derive(Debug, PartialEq)]
+pub enum Lit {
     Str(String),
     Num(f64),
 }
 
 #[cfg(test)]
 mod test {
+    use raystack::TagName;
+    use std::collections::HashMap;
     use super::grammar;
+    use super::{Lit, Val};
 
     // {type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello \"world\""}]}}
     const HELLO_WORLD: &str = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
@@ -47,11 +50,74 @@ mod test {
     }
 
     #[test]
+    fn tag_name_parser_works() {
+        let p = grammar::TagNameParser::new();
+        assert_eq!(p.parse("lower").unwrap(), TagName::new("lower".to_owned()).unwrap());
+        assert_eq!(p.parse("camelCase").unwrap(), TagName::new("camelCase".to_owned()).unwrap());
+        assert_eq!(p.parse("elundis_core").unwrap(), TagName::new("elundis_core".to_owned()).unwrap());
+    }
+
+    #[test]
+    fn empty_dict_works() {
+        let p = grammar::ValParser::new();
+        let expected = Val::Dict(HashMap::new());
+        assert_eq!(p.parse("{}").unwrap(), expected);
+    }
+
+    #[test]
+    fn dict1_works() {
+        let p = grammar::ValParser::new();
+        let name = TagName::new("tagName".to_owned()).unwrap();
+        let val = Val::Lit(Lit::Str("hello world".to_owned()));
+        let mut hash_map = HashMap::new();
+        hash_map.insert(name, Box::new(val));
+        let expected = Val::Dict(hash_map);
+        assert_eq!(p.parse(r#"{tagName:"hello world"}"#).unwrap(), expected);
+    }
+
+    #[test]
+    fn dict2_works() {
+        let p = grammar::ValParser::new();
+        let name1 = TagName::new("tagName1".to_owned()).unwrap();
+        let val1 = Val::Lit(Lit::Str("hello world".to_owned()));
+        let mut hash_map = HashMap::new();
+        hash_map.insert(name1, Box::new(val1));
+
+        let name2 = TagName::new("tagName2".to_owned()).unwrap();
+        let val2 = Val::Lit(Lit::Str("test".to_owned()));
+        hash_map.insert(name2, Box::new(val2));
+
+        let expected = Val::Dict(hash_map);
+        assert_eq!(p.parse(r#"{tagName1:"hello world", tagName2:"test"}"#).unwrap(), expected);
+    }
+
+    #[test]
+    fn empty_list_works() {
+        let p = grammar::ValParser::new();
+        let expected = Val::List(vec![]);
+        assert_eq!(p.parse("[]").unwrap(), expected);
+    }
+
+    #[test]
+    fn list1_works() {
+        let p = grammar::ValParser::new();
+        let val = Val::Lit(Lit::Str("hello world".to_owned()));
+        let expected = Val::List(vec![val]);
+        assert_eq!(p.parse(r#"["hello world"]"#).unwrap(), expected);
+    }
+
+    #[test]
+    fn list2_works() {
+        let p = grammar::ValParser::new();
+        let val1 = Val::Lit(Lit::Str("hello world".to_owned()));
+        let val2 = Val::Lit(Lit::Str("test".to_owned()));
+        let expected = Val::List(vec![val1, val2]);
+        assert_eq!(p.parse(r#"["hello world", "test"]"#).unwrap(), expected);
+    }
+
+    #[test]
     fn hello_world_works() {
-        // assert!(grammar::TermParser::new().parse(HELLO_WORLD).is_ok());
-        // assert!(grammar::TermParser::new().parse("22").is_ok());
-        // println!("{:?}", grammar::TermParser::new().parse("(22)"));
-        // assert!(grammar::TermParser::new().parse("((((22))))").is_ok());
-        // assert!(grammar::TermParser::new().parse("((22)").is_err());
+        let p = grammar::ValParser::new();
+        p.parse(HELLO_WORLD).unwrap();
     }
 }

@@ -1,9 +1,32 @@
+use crate::{Lit, Val};
+use raystack::TagName;
+use std::collections::HashMap;
 use std::str::FromStr;
 
 grammar;
 
+pub Val: Val = {
+    Str => Val::Lit(Lit::Str(<>)),
+    "[" "]" => Val::List(vec![]),
+    "[" <first_val:Val> <vals:("," <Val>)*> "]" => {
+        let mut vals = vals;
+        vals.insert(0, first_val);
+        Val::List(vals)
+    },
+    "{" "}" => Val::Dict(HashMap::new()),
+    "{" <first_entry:DictEntry> <entries:("," <DictEntry>)*> "}" => {
+        let mut entries = entries;
+        entries.insert(0, first_entry);
+        Val::Dict(entries.into_iter().collect())
+    }
+}
+
+DictEntry: (TagName, Box<Val>) = {
+    <tag_name:TagName> ":" <val:Val> => (tag_name, Box::new(val)),
+}
+
 pub Str: String = {
-    r#""([^\\]|\\[nt"\\])*""# => {
+    r#""([^\\"]|\\[nt"\\])*""# => {
         let s = <>;
         let len = s.len();
         s[1..len - 1]
@@ -13,4 +36,8 @@ pub Str: String = {
             .replace(r"\\", r#"\"#)
             .to_owned()
     },
+}
+
+pub TagName: TagName = {
+    r"[a-z]([a-zA-Z0-9_])*" => TagName::new(<>.to_owned()).unwrap(),
 }
