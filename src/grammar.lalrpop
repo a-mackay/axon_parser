@@ -1,5 +1,5 @@
 use crate::{Lit, Val};
-use raystack::TagName;
+use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -36,6 +36,16 @@ pub Str: String = {
             .replace(r"\\", r#"\"#)
             .to_owned()
     },
+}
+
+pub Num: Number = {
+    <float:Float> => {
+        Number::new(float, None)
+    },
+}
+
+pub Float: f64 = {
+    <number:r"-?[0-9]+(\.[0-9]+)?"> => f64::from_str(number).unwrap(),
 }
 
 pub TagName: TagName = {

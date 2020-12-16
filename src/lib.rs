@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lalrpop_util;
 
-use raystack::TagName;
+use raystack::{Number, TagName};
 use std::collections::HashMap;
 
 lalrpop_mod!(pub grammar); // synthesized by LALRPOP
@@ -21,7 +21,7 @@ pub enum Val {
 #[derive(Debug, PartialEq)]
 pub enum Lit {
     Str(String),
-    Num(f64),
+    Num(Number),
 }
 
 #[cfg(test)]
@@ -113,6 +113,15 @@ mod test {
         let val2 = Val::Lit(Lit::Str("test".to_owned()));
         let expected = Val::List(vec![val1, val2]);
         assert_eq!(p.parse(r#"["hello world", "test"]"#).unwrap(), expected);
+    }
+
+    #[test]
+    fn float_parser_works() {
+        let p = grammar::FloatParser::new();
+        assert_eq!(p.parse("123").unwrap(), 123.0);
+        assert_eq!(p.parse("-123").unwrap(), -123.0);
+        assert_eq!(p.parse("123.45").unwrap(), 123.45);
+        assert_eq!(p.parse("-123.45").unwrap(), -123.45);
     }
 
     #[test]
