@@ -26,7 +26,7 @@ pub enum Lit {
 
 #[cfg(test)]
 mod test {
-    use raystack::TagName;
+    use raystack::{Number, TagName};
     use std::collections::HashMap;
     use super::grammar;
     use super::{Lit, Val};
@@ -122,6 +122,24 @@ mod test {
         assert_eq!(p.parse("-123").unwrap(), -123.0);
         assert_eq!(p.parse("123.45").unwrap(), 123.45);
         assert_eq!(p.parse("-123.45").unwrap(), -123.45);
+    }
+
+    #[test]
+    fn number_parser_no_units_works() {
+        let p = grammar::NumParser::new();
+        assert_eq!(p.parse("123").unwrap(), Number::new(123.0, None));
+        assert_eq!(p.parse("-123").unwrap(), Number::new(-123.0, None));
+        assert_eq!(p.parse("123.45").unwrap(), Number::new(123.45, None));
+        assert_eq!(p.parse("-123.45").unwrap(), Number::new(-123.45, None));
+    }
+
+    #[test]
+    fn number_parser_units_works() {
+        let p = grammar::NumParser::new();
+        assert_eq!(p.parse("123percent").unwrap(), Number::new(123.0, Some("percent".to_owned())));
+        assert_eq!(p.parse("-123db").unwrap(), Number::new(-123.0, Some("db".to_owned())));
+        assert_eq!(p.parse("123.45gH₂O/kgAir").unwrap(), Number::new(123.45, Some("gH₂O/kgAir".to_owned())));
+        assert_eq!(p.parse("-123.45°daysF").unwrap(), Number::new(-123.45, Some("°daysF".to_owned())));
     }
 
     #[test]
