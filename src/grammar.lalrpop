@@ -1,0 +1,16 @@
+use std::str::FromStr;
+
+grammar;
+
+pub Str: String = {
+    r#""([^\\]|\\[nt"\\])*""# => {
+        let s = <>;
+        let len = s.len();
+        s[1..len - 1]
+            .replace(r#"\""#, r#"""#)
+            .replace(r"\n", "\n")
+            .replace(r"\t", "\t")
+            .replace(r"\\", r#"\"#)
+            .to_owned()
+    },
+}
