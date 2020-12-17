@@ -138,8 +138,8 @@ mod test {
         let p = grammar::NumParser::new();
         assert_eq!(p.parse("123percent").unwrap(), Number::new(123.0, Some("percent".to_owned())));
         assert_eq!(p.parse("-123db").unwrap(), Number::new(-123.0, Some("db".to_owned())));
-        assert_eq!(p.parse("123.45gH₂O/kgAir").unwrap(), Number::new(123.45, Some("gH₂O/kgAir".to_owned())));
-        assert_eq!(p.parse("-123.45°daysF").unwrap(), Number::new(-123.45, Some("°daysF".to_owned())));
+        assert_eq!(p.parse("123.45db").unwrap(), Number::new(123.45, Some("db".to_owned())));
+        assert_eq!(p.parse("-123.45%").unwrap(), Number::new(-123.45, Some("%".to_owned())));
     }
 
     #[test]
