@@ -20,19 +20,23 @@ pub enum Val {
 
 #[derive(Debug, PartialEq)]
 pub enum Lit {
+    Bool(bool),
     Str(String),
     Num(Number),
+    Uri(String),
 }
 
 #[cfg(test)]
 mod test {
-    use raystack::{Number, TagName};
-    use std::collections::HashMap;
     use super::grammar;
     use super::{Lit, Val};
+    use raystack::{Number, TagName};
+    use std::collections::HashMap;
 
-    // {type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello \"world\""}]}}
     const HELLO_WORLD: &str = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
+    const AHU_TEMP_DIFF: &str = include_str!("../test_input/ahu_temp_diff.txt");
+    const OLD_CHART_DEMO: &str =
+        include_str!("../test_input/old_chart_demo.txt");
 
     #[test]
     fn it_works() {
@@ -40,21 +44,46 @@ mod test {
     }
 
     #[test]
+    fn uri_parser_works() {
+        let p = grammar::UriParser::new();
+        assert_eq!(
+            p.parse(r"`http://www.google.com/search?q=hello&q2=world`")
+                .unwrap(),
+            "http://www.google.com/search?q=hello&q2=world".to_owned()
+        );
+    }
+
+    #[test]
     fn str_parser_works() {
         let p = grammar::StrParser::new();
-        assert_eq!(p.parse(r#""hello world""#).unwrap(), "hello world".to_owned());
+        assert_eq!(
+            p.parse(r#""hello world""#).unwrap(),
+            "hello world".to_owned()
+        );
         assert_eq!(p.parse(r#""\n""#).unwrap(), "\n".to_owned());
         assert_eq!(p.parse(r#""\t""#).unwrap(), "\t".to_owned());
         assert_eq!(p.parse(r#""\\""#).unwrap(), r"\".to_owned());
-        assert_eq!(p.parse(r#""hello \"world\" quoted""#).unwrap(), r#"hello "world" quoted"#.to_owned());
+        assert_eq!(
+            p.parse(r#""hello \"world\" quoted""#).unwrap(),
+            r#"hello "world" quoted"#.to_owned()
+        );
     }
 
     #[test]
     fn tag_name_parser_works() {
         let p = grammar::TagNameParser::new();
-        assert_eq!(p.parse("lower").unwrap(), TagName::new("lower".to_owned()).unwrap());
-        assert_eq!(p.parse("camelCase").unwrap(), TagName::new("camelCase".to_owned()).unwrap());
-        assert_eq!(p.parse("elundis_core").unwrap(), TagName::new("elundis_core".to_owned()).unwrap());
+        assert_eq!(
+            p.parse("lower").unwrap(),
+            TagName::new("lower".to_owned()).unwrap()
+        );
+        assert_eq!(
+            p.parse("camelCase").unwrap(),
+            TagName::new("camelCase".to_owned()).unwrap()
+        );
+        assert_eq!(
+            p.parse("elundis_core").unwrap(),
+            TagName::new("elundis_core".to_owned()).unwrap()
+        );
     }
 
     #[test]
@@ -88,7 +117,11 @@ mod test {
         hash_map.insert(name2, Box::new(val2));
 
         let expected = Val::Dict(hash_map);
-        assert_eq!(p.parse(r#"{tagName1:"hello world", tagName2:"test"}"#).unwrap(), expected);
+        assert_eq!(
+            p.parse(r#"{tagName1:"hello world", tagName2:"test"}"#)
+                .unwrap(),
+            expected
+        );
     }
 
     #[test]
@@ -136,15 +169,39 @@ mod test {
     #[test]
     fn number_parser_units_works() {
         let p = grammar::NumParser::new();
-        assert_eq!(p.parse("123percent").unwrap(), Number::new(123.0, Some("percent".to_owned())));
-        assert_eq!(p.parse("-123db").unwrap(), Number::new(-123.0, Some("db".to_owned())));
-        assert_eq!(p.parse("123.45db").unwrap(), Number::new(123.45, Some("db".to_owned())));
-        assert_eq!(p.parse("-123.45%").unwrap(), Number::new(-123.45, Some("%".to_owned())));
+        assert_eq!(
+            p.parse("123percent").unwrap(),
+            Number::new(123.0, Some("percent".to_owned()))
+        );
+        assert_eq!(
+            p.parse("-123db").unwrap(),
+            Number::new(-123.0, Some("db".to_owned()))
+        );
+        assert_eq!(
+            p.parse("123.45db").unwrap(),
+            Number::new(123.45, Some("db".to_owned()))
+        );
+        assert_eq!(
+            p.parse("-123.45%").unwrap(),
+            Number::new(-123.45, Some("%".to_owned()))
+        );
     }
 
     #[test]
     fn hello_world_works() {
         let p = grammar::ValParser::new();
         p.parse(HELLO_WORLD).unwrap();
+    }
+
+    #[test]
+    fn ahu_temp_diff_works() {
+        let p = grammar::ValParser::new();
+        p.parse(AHU_TEMP_DIFF).unwrap();
+    }
+
+    #[test]
+    fn old_chart_demo_works() {
+        let p = grammar::ValParser::new();
+        p.parse(OLD_CHART_DEMO).unwrap();
     }
 }

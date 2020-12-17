@@ -6,7 +6,10 @@ use std::str::FromStr;
 grammar;
 
 pub Val: Val = {
+    Bool => Val::Lit(Lit::Bool(<>)),
     Str => Val::Lit(Lit::Str(<>)),
+    Uri => Val::Lit(Lit::Uri(<>)),
+    Num => Val::Lit(Lit::Num(<>)),
     "[" "]" => Val::List(vec![]),
     "[" <first_val:Val> <vals:("," <Val>)*> "]" => {
         let mut vals = vals;
@@ -19,6 +22,11 @@ pub Val: Val = {
         entries.insert(0, first_entry);
         Val::Dict(entries.into_iter().collect())
     }
+}
+
+Bool: bool = {
+    "true" => true,
+    "false" => false,
 }
 
 DictEntry: (TagName, Box<Val>) = {
@@ -41,6 +49,14 @@ pub Str: String = {
 pub Num: Number = {
     <float:Float> <unit:(Unit)?>=> {
         Number::new(float, unit)
+    },
+}
+
+pub Uri: String = {
+    <r"`[^`]*`"> => {
+        let s = <>;
+        let len = s.len();
+        s[1..len - 1].to_owned()
     },
 }
 
