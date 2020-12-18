@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use crate::{Lit, Val};
+use crate::{Lit, Month, Val, YearMonth};
 use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -24,6 +24,16 @@ pub Val: Val = {
         let mut entries = entries;
         entries.insert(0, first_entry);
         Val::Dict(entries.into_iter().collect())
+    }
+}
+
+pub YearMonth: YearMonth = {
+    r"[1-9][0-9]{3}-[0-9]{2}" => {
+        let parts = <>.split("-").collect::<Vec<_>>();
+        let year = u32::from_str(parts[0]).unwrap();
+        let month = u32::from_str(parts[1]).unwrap();
+        let month = Month::from_int(month).unwrap();
+        YearMonth::new(year, month)
     }
 }
 

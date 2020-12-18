@@ -29,11 +29,63 @@ pub enum Lit {
     Uri(String),
 }
 
+#[derive(Debug, PartialEq)]
+pub struct YearMonth {
+    year: u32,
+    month: Month,
+}
+
+impl YearMonth {
+    pub fn new(year: u32, month: Month) -> Self {
+        Self {
+            year,
+            month,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Month {
+    Jan,
+    Feb,
+    Mar,
+    Apr,
+    May,
+    Jun,
+    Jul,
+    Aug,
+    Sep,
+    Oct,
+    Nov,
+    Dec,
+}
+
+impl Month {
+    /// Convert from a number between 1 and 12 inclusive.
+    fn from_int(int: u32) -> Option<Self> {
+        match int {
+            1 => Some(Month::Jan),
+            2 => Some(Month::Feb),
+            3 => Some(Month::Mar),
+            4 => Some(Month::Apr),
+            5 => Some(Month::May),
+            6 => Some(Month::Jun),
+            7 => Some(Month::Jul),
+            8 => Some(Month::Aug),
+            9 => Some(Month::Sep),
+            10 => Some(Month::Oct),
+            11 => Some(Month::Nov),
+            12 => Some(Month::Dec),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use chrono::NaiveDate;
     use super::grammar;
-    use super::{Lit, Val};
+    use super::{Lit, Month, Val, YearMonth};
     use raystack::{Number, TagName};
     use std::collections::HashMap;
 
@@ -45,6 +97,12 @@ mod test {
     #[test]
     fn it_works() {
         assert_eq!(1 + 1, 2);
+    }
+
+    #[test]
+    fn year_month_parser_works() {
+        let p = grammar::YearMonthParser::new();
+        assert_eq!(p.parse("2020-12").unwrap(), YearMonth::new(2020, Month::Dec))
     }
 
     #[test]
