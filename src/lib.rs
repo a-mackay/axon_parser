@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate lalrpop_util;
 
+use chrono::NaiveDate;
 use raystack::{Number, TagName};
 use std::collections::HashMap;
 
@@ -21,13 +22,16 @@ pub enum Val {
 #[derive(Debug, PartialEq)]
 pub enum Lit {
     Bool(bool),
+    Date(NaiveDate),
     Str(String),
+    Null,
     Num(Number),
     Uri(String),
 }
 
 #[cfg(test)]
 mod test {
+    use chrono::NaiveDate;
     use super::grammar;
     use super::{Lit, Val};
     use raystack::{Number, TagName};
@@ -41,6 +45,12 @@ mod test {
     #[test]
     fn it_works() {
         assert_eq!(1 + 1, 2);
+    }
+
+    #[test]
+    fn date_parser_works() {
+        let p = grammar::DateParser::new();
+        assert_eq!(p.parse("2020-12-01").unwrap(), NaiveDate::from_ymd(2020, 12, 1))
     }
 
     #[test]

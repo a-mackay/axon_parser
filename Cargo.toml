@@ -10,6 +10,7 @@ edition = "2018"
 lalrpop = { version = "0.19.1", features = ["lexer"] }
 
 [dependencies]
+chrono = "0.4"
 lalrpop-util = "0.19.1"
 raystack = "0.6"
 regex = "1"

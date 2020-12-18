@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use crate::{Lit, Val};
 use raystack::{Number, TagName};
 use std::collections::HashMap;
@@ -6,6 +7,8 @@ use std::str::FromStr;
 grammar;
 
 pub Val: Val = {
+    Date => Val::Lit(Lit::Date(<>)),
+    Null => Val::Lit(Lit::Null),
     Bool => Val::Lit(Lit::Bool(<>)),
     Str => Val::Lit(Lit::Str(<>)),
     Uri => Val::Lit(Lit::Uri(<>)),
@@ -22,6 +25,16 @@ pub Val: Val = {
         entries.insert(0, first_entry);
         Val::Dict(entries.into_iter().collect())
     }
+}
+
+pub Date: NaiveDate = {
+    r"[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}" => {
+        NaiveDate::parse_from_str(<>, "%Y-%m-%d").unwrap()
+    }
+}
+
+Null: () = {
+    "null" => (),
 }
 
 Bool: bool = {
