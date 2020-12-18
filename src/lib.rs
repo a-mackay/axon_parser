@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate lalrpop_util;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use raystack::{Number, TagName};
 use std::collections::HashMap;
 
@@ -23,10 +23,12 @@ pub enum Val {
 pub enum Lit {
     Bool(bool),
     Date(NaiveDate),
-    Str(String),
     Null,
     Num(Number),
+    Str(String),
+    Time(NaiveTime),
     Uri(String),
+    YearMonth(YearMonth),
 }
 
 #[derive(Debug, PartialEq)]
@@ -83,7 +85,7 @@ impl Month {
 
 #[cfg(test)]
 mod test {
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, NaiveTime};
     use super::grammar;
     use super::{Lit, Month, Val, YearMonth};
     use raystack::{Number, TagName};
@@ -97,6 +99,13 @@ mod test {
     #[test]
     fn it_works() {
         assert_eq!(1 + 1, 2);
+    }
+
+    #[test]
+    fn time_parser_works() {
+        let p =grammar::TimeParser::new();
+        assert_eq!(p.parse("12:34:56").unwrap(), NaiveTime::from_hms(12, 34, 56));
+        assert_eq!(p.parse("12:34").unwrap(), NaiveTime::from_hms(12, 34, 0));
     }
 
     #[test]

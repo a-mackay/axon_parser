@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use crate::{Lit, Month, Val, YearMonth};
 use raystack::{Number, TagName};
 use std::collections::HashMap;
@@ -7,12 +7,14 @@ use std::str::FromStr;
 grammar;
 
 pub Val: Val = {
+    Bool => Val::Lit(Lit::Bool(<>)),
     Date => Val::Lit(Lit::Date(<>)),
     Null => Val::Lit(Lit::Null),
-    Bool => Val::Lit(Lit::Bool(<>)),
-    Str => Val::Lit(Lit::Str(<>)),
-    Uri => Val::Lit(Lit::Uri(<>)),
     Num => Val::Lit(Lit::Num(<>)),
+    Str => Val::Lit(Lit::Str(<>)),
+    Time => Val::Lit(Lit::Time(<>)),
+    Uri => Val::Lit(Lit::Uri(<>)),
+    YearMonth => Val::Lit(Lit::YearMonth(<>)),
     "[" "]" => Val::List(vec![]),
     "[" <first_val:Val> <vals:("," <Val>)*> "]" => {
         let mut vals = vals;
@@ -34,6 +36,16 @@ pub YearMonth: YearMonth = {
         let month = u32::from_str(parts[1]).unwrap();
         let month = Month::from_int(month).unwrap();
         YearMonth::new(year, month)
+    }
+}
+
+pub Time: NaiveTime = {
+    r"[0-9]{2}:[0-9]{2}(:[0-9]{2})?" => {
+        let with_secs = NaiveTime::parse_from_str(<>, "%H:%M:%S");
+        match &with_secs {
+            Ok(_) => with_secs.unwrap(),
+            Err(_) => NaiveTime::parse_from_str(<>, "%H:%M").unwrap(),
+        }
     }
 }
 
