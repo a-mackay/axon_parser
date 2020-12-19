@@ -6,6 +6,31 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
 #[derive(Clone, Debug, PartialEq)]
+struct Def {
+    pub name: TagName,
+    pub val: DefValue,
+}
+
+impl Def {
+    pub fn new(name: TagName, val: DefValue) -> Self {
+        Self { name, val }
+    }
+}
+
+impl TryFrom<&Val> for Def {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DefValue {
+    Lit(Lit),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Param {
     pub name: TagName,
     pub default_val: Option<ParamDefaultValue>,
@@ -220,7 +245,12 @@ impl From<ap::Month> for Month {
 mod tests {
     use super::*;
     use axon_parseast_parser::parse as ap_parse;
+    use raystack::Number;
     use std::convert::TryInto;
+
+    fn lit_num(n: f64) -> Lit {
+        Lit::Num(Number::new(n, None))
+    }
 
     fn tn(tag_name: &str) -> TagName {
         TagName::new(tag_name.to_owned()).unwrap()
@@ -248,9 +278,18 @@ mod tests {
     fn val_to_param_with_default_val_literal_works() {
         let val =
             &ap_parse(r#"{name:"ahu", def:{type:"literal", val:1}}"#).unwrap();
-        let def_val = ParamDefaultValue::Lit(Lit::Num(Number::new(1.0, None)));
+        let def_val = ParamDefaultValue::Lit(lit_num(1.0));
         let expected = Param::new(tn("ahu"), Some(def_val));
         let param: Param = val.try_into().unwrap();
         assert_eq!(param, expected);
+    }
+
+    #[test]
+    fn val_to_def_literal_works() {
+        let val = &ap_parse(r#"{type:"def", name:"varName", val:{type:"literal", val:1}}"#).unwrap();
+        let def_val = DefValue::Lit(lit_num(1.0));
+        let expected = Def::new(tn("siteId"), def_val);
+        let def: Def = val.try_into().unwrap();
+        assert_eq!(def, expected);
     }
 }
