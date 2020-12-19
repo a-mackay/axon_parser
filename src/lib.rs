@@ -7,19 +7,20 @@ use std::collections::HashMap;
 
 lalrpop_mod!(pub grammar); // synthesized by LALRPOP
 
-fn parse_to_hash_map(axon: &str) -> HashMap<TagName, Val> {
-    println!("hello");
-    unimplemented!()
+/// Parse the output of `toAxonCode(parseAst( ... ))` and return a `Val`.
+pub fn parse(axon: &str) -> Result<Val, impl std::error::Error + '_> {
+    let parser = grammar::ValParser::new();
+    parser.parse(axon)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Val {
     Dict(HashMap<TagName, Box<Val>>),
     List(Vec<Val>),
     Lit(Lit),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Lit {
     Bool(bool),
     Date(NaiveDate),
@@ -31,7 +32,7 @@ pub enum Lit {
     YearMonth(YearMonth),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct YearMonth {
     year: u32,
     month: Month,
@@ -39,14 +40,11 @@ pub struct YearMonth {
 
 impl YearMonth {
     pub fn new(year: u32, month: Month) -> Self {
-        Self {
-            year,
-            month,
-        }
+        Self { year, month }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Month {
     Jan,
     Feb,
@@ -85,9 +83,9 @@ impl Month {
 
 #[cfg(test)]
 mod test {
-    use chrono::{NaiveDate, NaiveTime};
     use super::grammar;
     use super::{Lit, Month, Val, YearMonth};
+    use chrono::{NaiveDate, NaiveTime};
     use raystack::{Number, TagName};
     use std::collections::HashMap;
 
@@ -105,21 +103,30 @@ mod test {
 
     #[test]
     fn time_parser_works() {
-        let p =grammar::TimeParser::new();
-        assert_eq!(p.parse("12:34:56").unwrap(), NaiveTime::from_hms(12, 34, 56));
+        let p = grammar::TimeParser::new();
+        assert_eq!(
+            p.parse("12:34:56").unwrap(),
+            NaiveTime::from_hms(12, 34, 56)
+        );
         assert_eq!(p.parse("12:34").unwrap(), NaiveTime::from_hms(12, 34, 0));
     }
 
     #[test]
     fn year_month_parser_works() {
         let p = grammar::YearMonthParser::new();
-        assert_eq!(p.parse("2020-12").unwrap(), YearMonth::new(2020, Month::Dec))
+        assert_eq!(
+            p.parse("2020-12").unwrap(),
+            YearMonth::new(2020, Month::Dec)
+        )
     }
 
     #[test]
     fn date_parser_works() {
         let p = grammar::DateParser::new();
-        assert_eq!(p.parse("2020-12-01").unwrap(), NaiveDate::from_ymd(2020, 12, 1))
+        assert_eq!(
+            p.parse("2020-12-01").unwrap(),
+            NaiveDate::from_ymd(2020, 12, 1)
+        )
     }
 
     #[test]
