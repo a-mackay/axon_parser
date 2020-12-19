@@ -5,12 +5,25 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
+// range
+// group
+// not x
+// dict literal
+// list literal
+// filters
+// expr
+
 /// Converts something like '{type:"var", name:"siteId"}' to
 /// a TagName like `TagName::new("siteId")`.
 fn var_val_to_tag_name(val: &Val) -> Option<TagName> {
     let hash_map = map_for_type(val, "var").ok()?;
     let tag_name = get_literal_str(hash_map, "name")?;
-    let tag_name = TagName::new(tag_name.to_owned()).unwrap_or_else(|| panic!(format!("'name' tag in a var should be a valid TagName")));
+    let tag_name = TagName::new(tag_name.to_owned()).unwrap_or_else(|| {
+        panic!(format!(
+            "'name' tag in a var should be a valid TagName: {}",
+            tag_name
+        ))
+    });
     Some(tag_name)
 }
 
@@ -33,9 +46,13 @@ impl TryFrom<&Val> for Assign {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "assign").map_err(|_| ())?;
-        let lhs = get_val(hash_map, "lhs").expect("assign should have a 'lhs' tag");
-        let name = var_val_to_tag_name(lhs).expect("assign lhs should be a var with a 'name' tag");
-        let assign_val = get_val(hash_map, "rhs").expect("assign should have a 'rhs' tag").try_into()?;
+        let lhs =
+            get_val(hash_map, "lhs").expect("assign should have a 'lhs' tag");
+        let name = var_val_to_tag_name(lhs)
+            .expect("assign lhs should be a var with a 'name' tag");
+        let assign_val = get_val(hash_map, "rhs")
+            .expect("assign should have a 'rhs' tag")
+            .try_into()?;
         Ok(Self::new(name, assign_val))
     }
 }
@@ -74,8 +91,11 @@ impl TryFrom<&Val> for Def {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "def").map_err(|_| ())?;
-        let name = tn(get_literal_str(hash_map, "name").expect("def should have a string 'name' tag"));
-        let def_val = get_val(hash_map, "val").expect("def should have a 'val' tag").try_into()?;
+        let name = tn(get_literal_str(hash_map, "name")
+            .expect("def should have a string 'name' tag"));
+        let def_val = get_val(hash_map, "val")
+            .expect("def should have a 'val' tag")
+            .try_into()?;
         Ok(Self::new(name, def_val))
     }
 }
