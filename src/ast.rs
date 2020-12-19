@@ -5,6 +5,58 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
+/// Converts something like '{type:"var", name:"siteId"}' to
+/// a TagName like `TagName::new("siteId")`.
+fn var_val_to_tag_name(val: &Val) -> Option<TagName> {
+    let hash_map = map_for_type(val, "var").ok()?;
+    let tag_name = get_literal_str(hash_map, "name")?;
+    let tag_name = TagName::new(tag_name.to_owned()).unwrap_or_else(|| panic!(format!("'name' tag in a var should be a valid TagName")));
+    Some(tag_name)
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Assign {
+    /// lhs
+    pub name: TagName,
+    /// rhs
+    pub val: AssignValue,
+}
+
+impl Assign {
+    pub fn new(name: TagName, val: AssignValue) -> Self {
+        Self { name, val }
+    }
+}
+
+impl TryFrom<&Val> for Assign {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "assign").map_err(|_| ())?;
+        let lhs = get_val(hash_map, "lhs").expect("assign should have a 'lhs' tag");
+        let name = var_val_to_tag_name(lhs).expect("assign lhs should be a var with a 'name' tag");
+        let assign_val = get_val(hash_map, "rhs").expect("assign should have a 'rhs' tag").try_into()?;
+        Ok(Self::new(name, assign_val))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AssignValue {
+    Lit(Lit),
+}
+
+impl TryFrom<&Val> for AssignValue {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let lit: Option<Lit> = val.try_into().ok();
+        if let Some(lit) = lit {
+            return Ok(Self::Lit(lit));
+        };
+        Err(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     pub name: TagName,
@@ -21,13 +73,28 @@ impl TryFrom<&Val> for Def {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        unimplemented!()
+        let hash_map = map_for_type(val, "def").map_err(|_| ())?;
+        let name = tn(get_literal_str(hash_map, "name").expect("def should have a string 'name' tag"));
+        let def_val = get_val(hash_map, "val").expect("def should have a 'val' tag").try_into()?;
+        Ok(Self::new(name, def_val))
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DefValue {
     Lit(Lit),
+}
+
+impl TryFrom<&Val> for DefValue {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let lit: Option<Lit> = val.try_into().ok();
+        if let Some(lit) = lit {
+            return Ok(Self::Lit(lit));
+        };
+        Err(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -286,12 +353,24 @@ mod tests {
     #[test]
     fn val_to_def_literal_works() {
         let val = &ap_parse(
-            r#"{type:"def", name:"varName", val:{type:"literal", val:1}}"#,
+            r#"{type:"def", name:"siteId", val:{type:"literal", val:1}}"#,
         )
         .unwrap();
         let def_val = DefValue::Lit(lit_num(1.0));
         let expected = Def::new(tn("siteId"), def_val);
         let def: Def = val.try_into().unwrap();
         assert_eq!(def, expected);
+    }
+
+    #[test]
+    fn val_to_assign_literal_works() {
+        let val = &ap_parse(
+            r#"{type:"assign", lhs:{type:"var", name:"siteId"}, rhs:{type:"literal", val:1}}"#,
+        )
+        .unwrap();
+        let assign_val = AssignValue::Lit(lit_num(1.0));
+        let expected = Assign::new(tn("siteId"), assign_val);
+        let assign: Assign = val.try_into().unwrap();
+        assert_eq!(assign, expected);
     }
 }
