@@ -1,5 +1,5 @@
-use axon_parseast_parser::Val;
 use axon_parseast_parser as ap;
+use axon_parseast_parser::Val;
 use chrono::{NaiveDate, NaiveTime};
 use raystack::{Number, TagName};
 use std::collections::HashMap;
@@ -39,28 +39,39 @@ impl TryFrom<&Val> for Lit {
         match val {
             Val::Dict(hash_map) => {
                 if type_str(hash_map) == "literal" {
-                    let val = get_val(hash_map, "val").expect("type 'literal' should have 'val' tag");
+                    let val = get_val(hash_map, "val")
+                        .expect("type 'literal' should have 'val' tag");
                     match val {
                         Val::Lit(lit) => Ok(lit.into()),
-                        _ => panic!("expected type 'literal' 'val' tag to be a literal"),
+                        _ => panic!(
+                            "expected type 'literal' 'val' tag to be a literal"
+                        ),
                     }
                 } else {
                     Err(())
                 }
-            },
+            }
             _ => Err(()),
         }
     }
 }
 
-fn get_val<'a, 'b>(hash_map: &'a HashMap<TagName, Box<Val>>, tag_name: &'b str) -> Option<&'a Val> {
-    let tag_name = TagName::new(tag_name.into()).expect(&format!("expected '{}' to be a valid tag name", tag_name));
+fn get_val<'a, 'b>(
+    hash_map: &'a HashMap<TagName, Box<Val>>,
+    tag_name: &'b str,
+) -> Option<&'a Val> {
+    let tag_name = TagName::new(tag_name.into()).unwrap_or_else(|| {
+        panic!("expected '{}' to be a valid tag name", tag_name)
+    });
     hash_map.get(&tag_name).map(|val| val.as_ref())
 }
 
 fn type_str(hash_map: &HashMap<TagName, Box<Val>>) -> &str {
-    let tag_name = TagName::new("type".into()).expect("expected 'type' to be a valid tag name");
-    let val = hash_map.get(&tag_name).expect("expected every dict to contain the 'type' tag");
+    let tag_name = TagName::new("type".into())
+        .expect("expected 'type' to be a valid tag name");
+    let val = hash_map
+        .get(&tag_name)
+        .expect("expected every dict to contain the 'type' tag");
     match val.as_ref() {
         Val::Lit(ap::Lit::Str(s)) => s,
         _ => panic!("expected the 'type' tag's value to be a literal string"),
@@ -83,7 +94,10 @@ impl From<&ap::YearMonth> for YearMonth {
     fn from(ym: &ap::YearMonth) -> Self {
         let year = ym.year;
         let month = ym.month.clone();
-        Self { year: year, month: month.into() }
+        Self {
+            year,
+            month: month.into(),
+        }
     }
 }
 
@@ -124,9 +138,9 @@ impl From<ap::Month> for Month {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use axon_parseast_parser::parse as ap_parse;
     use std::convert::TryInto;
-    use super::*;
 
     const HELLO_WORLD: &str = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
 

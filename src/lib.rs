@@ -1,6 +1,3 @@
-use axon_parseast_parser::parse as pa_parse;
-use axon_parseast_parser::Val;
-
 pub mod ast;
 
 // Dict(
@@ -57,9 +54,7 @@ pub mod ast;
 //     },
 // )
 
-fn convert(val: Val) -> () {
-
-}
+// fn convert(val: Val) -> () {}
 
 #[cfg(test)]
 mod tests {
