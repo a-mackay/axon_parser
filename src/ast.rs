@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
 #[derive(Clone, Debug, PartialEq)]
-struct Def {
+pub struct Def {
     pub name: TagName,
     pub val: DefValue,
 }
@@ -75,7 +75,6 @@ impl TryFrom<&ap::Val> for Param {
 #[derive(Clone, Debug, PartialEq)]
 enum ParamDefaultValue {
     Lit(Lit),
-    Todo,
 }
 
 impl TryFrom<&Val> for ParamDefaultValue {
@@ -286,7 +285,10 @@ mod tests {
 
     #[test]
     fn val_to_def_literal_works() {
-        let val = &ap_parse(r#"{type:"def", name:"varName", val:{type:"literal", val:1}}"#).unwrap();
+        let val = &ap_parse(
+            r#"{type:"def", name:"varName", val:{type:"literal", val:1}}"#,
+        )
+        .unwrap();
         let def_val = DefValue::Lit(lit_num(1.0));
         let expected = Def::new(tn("siteId"), def_val);
         let def: Def = val.try_into().unwrap();
