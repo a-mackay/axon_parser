@@ -93,6 +93,8 @@ mod test {
 
     const HELLO_WORLD: &str = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
     const AHU_TEMP_DIFF: &str = include_str!("../test_input/ahu_temp_diff.txt");
+    const AHU_FUNC: &str = include_str!("../test_input/ahu_func.txt");
+    const EQUIP_FUNC: &str = include_str!("../test_input/equip_func.txt");
     const OLD_CHART_DEMO: &str =
         include_str!("../test_input/old_chart_demo.txt");
 
@@ -274,6 +276,18 @@ mod test {
     fn ahu_temp_diff_works() {
         let p = grammar::ValParser::new();
         p.parse(AHU_TEMP_DIFF).unwrap();
+    }
+
+    #[test]
+    fn ahu_func_works() {
+        let p = grammar::ValParser::new();
+        p.parse(AHU_FUNC).unwrap();
+    }
+
+    #[test]
+    fn equip_func_works() {
+        let p = grammar::ValParser::new();
+        p.parse(EQUIP_FUNC).unwrap();
     }
 
     #[test]
