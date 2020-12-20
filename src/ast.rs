@@ -5,12 +5,35 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// range
 // call
-// group
 // not x
 // filters
 // expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Range {
+    start: Expr,
+    end: Expr,
+}
+
+impl Range {
+    pub fn new(start: Expr, end: Expr) -> Self {
+        Self { start, end }
+    }
+}
+
+impl TryFrom<&Val> for Range {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "range").map_err(|_| ())?;
+        let start = get_val(hash_map, "start").expect("range should have 'start' tag");
+        let end = get_val(hash_map, "end").expect("range should have 'end' tag");
+        let start_expr = start.try_into().expect("range 'start' could not be parsed as an Expr");
+        let end_expr = end.try_into().expect("range 'end' could not be parsed as an Expr");
+        Ok(Self::new(start_expr, end_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Func {
@@ -753,5 +776,15 @@ mod tests {
 
         let block: Block = val.try_into().unwrap();
         assert_eq!(block, expected);
+    }
+
+    #[test]
+    fn val_to_simple_range_works() {
+        let val = &ap_parse(r#"{type:"range", start:{type:"literal", val:1}, end:{type:"literal", val:2}}"#).unwrap();
+        let start = Expr::Lit(lit_num(1.0));
+        let end = Expr::Lit(lit_num(2.0));
+        let expected = Range::new(start, end);
+        let range: Range = val.try_into().unwrap();
+        assert_eq!(range, expected);
     }
 }
