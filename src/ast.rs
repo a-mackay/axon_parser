@@ -8,9 +8,37 @@ use std::convert::{From, TryFrom, TryInto};
 // range
 // group
 // not x
-// dict literal
 // filters
 // expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Block {
+    exprs: Vec<Expr>,
+}
+
+impl Block {
+    pub fn new(exprs: Vec<Expr>) -> Self {
+        Self { exprs }
+    }
+}
+
+impl TryFrom<&Val> for Block {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "block").map_err(|_| ())?;
+        let vals = get_vals(hash_map, "exprs")
+            .expect("block should contain 'exprs' tag");
+
+        let mut exprs = vec![];
+        for val in vals {
+            let expr = val.try_into().unwrap_or_else(|_| panic!("val in block 'exprs' tag could not be parsed as an Expr: {:?}", val));
+            exprs.push(expr);
+        }
+
+        Ok(Self::new(exprs))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dict {
@@ -29,20 +57,28 @@ impl TryFrom<&Val> for Dict {
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "dict").map_err(|_| ())?;
 
-        let names = get_vals(hash_map, "names").expect("dict should contain 'names' tag");
+        let names = get_vals(hash_map, "names")
+            .expect("dict should contain 'names' tag");
         let mut tag_names = vec![];
 
         for name in names {
             match name {
                 Val::Lit(ap::Lit::Str(s)) => {
-                    let tag_name = TagName::new(s.to_owned()).unwrap_or_else(|| panic!(format!("tag name '{}' in dict was not a valid TagName", s)));
+                    let tag_name =
+                        TagName::new(s.to_owned()).unwrap_or_else(|| {
+                            panic!(
+                                "tag name '{}' in dict was not a valid TagName",
+                                s
+                            )
+                        });
                     tag_names.push(tag_name);
-                },
+                }
                 _ => panic!("expected all dict names to be string literals"),
             }
         }
 
-        let vals = get_vals(hash_map, "vals").expect("dict should contain 'vals' tag");
+        let vals =
+            get_vals(hash_map, "vals").expect("dict should contain 'vals' tag");
         assert!(vals.len() == names.len());
         let mut dict_vals = vec![];
 
@@ -52,7 +88,12 @@ impl TryFrom<&Val> for Dict {
             } else if val_is_remove_marker(val) {
                 dict_vals.push(DictVal::RemoveMarker);
             } else {
-                let expr = val.try_into().unwrap_or_else(|_| panic!(format!("dict val could not be converted to an Expr: {:?}", val)));
+                let expr = val.try_into().unwrap_or_else(|_| {
+                    panic!(
+                        "dict val could not be converted to an Expr: {:?}",
+                        val
+                    )
+                });
                 dict_vals.push(DictVal::Expr(expr));
             }
         }
@@ -77,16 +118,14 @@ fn val_is_marker(val: &Val) -> bool {
 
             let key = tn("val");
             let identifier = hash_map.get(&key);
+
             match identifier {
                 Some(inner_val) => {
-                    match inner_val.as_ref() {
-                        Val::Lit(ap::Lit::DictMarker) => true,
-                        _ => false,
-                    }
+                    matches!(inner_val.as_ref(), Val::Lit(ap::Lit::DictMarker))
                 }
                 None => false,
             }
-        },
+        }
         _ => false,
     }
 }
@@ -106,14 +145,14 @@ fn val_is_remove_marker(val: &Val) -> bool {
             let identifier = hash_map.get(&key);
             match identifier {
                 Some(inner_val) => {
-                    match inner_val.as_ref() {
-                        Val::Lit(ap::Lit::DictRemoveMarker) => true,
-                        _ => false,
-                    }
+                    matches!(
+                        inner_val.as_ref(),
+                        Val::Lit(ap::Lit::DictRemoveMarker)
+                    )
                 }
                 None => false,
             }
-        },
+        }
         _ => false,
     }
 }
@@ -141,8 +180,11 @@ impl TryFrom<&Val> for Throw {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "throw").map_err(|_| ())?;
-        let val = get_val(hash_map, "expr").expect("throw should contain 'expr' tag");
-        let expr: Expr = val.try_into().expect("throw 'expr' could not be converted into an Expr");
+        let val =
+            get_val(hash_map, "expr").expect("throw should contain 'expr' tag");
+        let expr: Expr = val
+            .try_into()
+            .expect("throw 'expr' could not be converted into an Expr");
         Ok(Self::new(expr))
     }
 }
@@ -163,9 +205,13 @@ impl TryFrom<&Val> for List {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "list").map_err(|_| ())?;
-        let elements = get_vals(hash_map, "vals").expect("'vals' tag in list should contain a vec of elements");
-        let exprs: Result<Vec<Expr>, ()> = elements.iter().map(|elem| elem.try_into()).collect();
-        let exprs = exprs.expect("at least one list element could not be converted into an Expr");
+        let elements = get_vals(hash_map, "vals")
+            .expect("'vals' tag in list should contain a vec of elements");
+        let exprs: Result<Vec<Expr>, ()> =
+            elements.iter().map(|elem| elem.try_into()).collect();
+        let exprs = exprs.expect(
+            "at least one list element could not be converted into an Expr",
+        );
         Ok(Self::new(exprs))
     }
 }
@@ -405,7 +451,9 @@ impl TryFrom<&ap::Lit> for Lit {
             ap::Lit::Bool(bool) => Ok(Lit::Bool(*bool)),
             ap::Lit::Date(date) => Ok(Lit::Date(*date)),
             ap::Lit::DictMarker => Err(ConvertLitError::IsDictMarker),
-            ap::Lit::DictRemoveMarker => Err(ConvertLitError::IsDictRemoveMarker),
+            ap::Lit::DictRemoveMarker => {
+                Err(ConvertLitError::IsDictRemoveMarker)
+            }
             ap::Lit::Null => Ok(Lit::Null),
             ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
             ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
@@ -427,7 +475,7 @@ impl TryFrom<&Val> for Lit {
             Val::Lit(lit) => {
                 let lit = lit.try_into().map_err(|_| ())?;
                 Ok(lit)
-            },
+            }
             _ => panic!("expected type 'literal' 'val' tag to be a literal"),
         }
     }
@@ -454,7 +502,10 @@ enum MapForTypeError {
     TypeStringMismatch,
 }
 
-fn get_vals<'a, 'b>(hash_map: &'a HashMap<TagName, Box<Val>>, tag_name: &'b str) -> Option<&'a Vec<Val>> {
+fn get_vals<'a, 'b>(
+    hash_map: &'a HashMap<TagName, Box<Val>>,
+    tag_name: &'b str,
+) -> Option<&'a Vec<Val>> {
     let tag_name = tn(tag_name);
     let val = hash_map.get(&tag_name).map(|val| val.as_ref())?;
     match val {
@@ -568,6 +619,11 @@ mod tests {
     const HELLO_WORLD: &str = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
 
     #[test]
+    fn hello_world_works() {
+        todo!()
+    }
+
+    #[test]
     fn val_to_lit_works() {
         let val = &ap_parse(r#"{type:"literal", val:"hello"}"#).unwrap();
         let expected = Lit::Str("hello".to_owned());
@@ -619,7 +675,10 @@ mod tests {
 
     #[test]
     fn val_to_throw_str_literal_works() {
-        let val = &ap_parse(r#"{type:"throw", expr:{type:"literal", val:"error message"}}"#).unwrap();
+        let val = &ap_parse(
+            r#"{type:"throw", expr:{type:"literal", val:"error message"}}"#,
+        )
+        .unwrap();
         let expr = Expr::Lit(lit_str("error message"));
         let expected = Throw::new(expr);
         let throw: Throw = val.try_into().unwrap();
@@ -628,7 +687,8 @@ mod tests {
 
     #[test]
     fn val_to_non_empty_list_works() {
-        let val = &ap_parse(r#"{type:"list", vals:[{type:"literal", val:1}]}"#).unwrap();
+        let val = &ap_parse(r#"{type:"list", vals:[{type:"literal", val:1}]}"#)
+            .unwrap();
         let expr = Expr::Lit(lit_num(1.0));
         let expected = List::new(vec![expr]);
         let list: List = val.try_into().unwrap();
@@ -653,5 +713,16 @@ mod tests {
         let expected = Dict::new(map);
         let dict: Dict = val.try_into().unwrap();
         assert_eq!(dict, expected);
+    }
+
+    #[test]
+    fn val_to_single_expr_block_works() {
+        let val = &ap_parse(r#"{type:"block", exprs:[{type:"literal", val:"hello"}]}"#).unwrap();
+        let expr = Expr::Lit(lit_str("hello"));
+        let exprs = vec![expr];
+        let expected = Block::new(exprs);
+
+        let block: Block = val.try_into().unwrap();
+        assert_eq!(block, expected);
     }
 }
