@@ -9,9 +9,94 @@ use std::convert::{From, TryFrom, TryInto};
 // group
 // not x
 // dict literal
-// list literal
 // filters
 // expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Throw {
+    expr: Expr,
+}
+
+impl Throw {
+    pub fn new(expr: Expr) -> Self {
+        Self { expr }
+    }
+}
+
+impl TryFrom<&Val> for Throw {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "throw").map_err(|_| ())?;
+        let val = get_val(hash_map, "expr").expect("throw should contain 'expr' tag");
+        let expr: Expr = val.try_into().expect("throw 'expr' could not be converted into an Expr");
+        Ok(Self::new(expr))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct List {
+    pub vals: Vec<Expr>,
+}
+
+impl List {
+    pub fn new(vals: Vec<Expr>) -> Self {
+        Self { vals }
+    }
+}
+
+impl TryFrom<&Val> for List {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "list").map_err(|_| ())?;
+        let elements = get_vals(hash_map, "vals").expect("'vals' tag in list should contain a vec of elements");
+        let exprs: Result<Vec<Expr>, ()> = elements.iter().map(|elem| elem.try_into()).collect();
+        let exprs = exprs.expect("at least one list element could not be converted into an Expr");
+        Ok(Self::new(exprs))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    Assign(Assign),
+    Def(Def),
+    Id(TagName),
+    List(List),
+    Lit(Lit),
+}
+
+impl TryFrom<&Val> for Expr {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let lit: Option<Lit> = val.try_into().ok();
+        if let Some(lit) = lit {
+            return Ok(Expr::Lit(lit));
+        };
+
+        if let Some(tag_name) = var_val_to_tag_name(val) {
+            return Ok(Expr::Id(tag_name));
+        };
+
+        let assign: Option<Assign> = val.try_into().ok();
+        if let Some(assign) = assign {
+            return Ok(Expr::Assign(assign));
+        };
+
+        let def: Option<Def> = val.try_into().ok();
+        if let Some(def) = def {
+            return Ok(Expr::Def(def));
+        };
+
+        let list: Option<List> = val.try_into().ok();
+        if let Some(list) = list {
+            return Ok(Expr::List(list));
+        };
+
+        Err(())
+    }
+}
 
 /// Converts something like '{type:"var", name:"siteId"}' to
 /// a TagName like `TagName::new("siteId")`.
@@ -244,6 +329,15 @@ enum MapForTypeError {
     TypeStringMismatch,
 }
 
+fn get_vals<'a, 'b>(hash_map: &'a HashMap<TagName, Box<Val>>, tag_name: &'b str) -> Option<&'a Vec<Val>> {
+    let tag_name = tn(tag_name);
+    let val = hash_map.get(&tag_name).map(|val| val.as_ref())?;
+    match val {
+        Val::List(elements) => Some(elements),
+        _ => None,
+    }
+}
+
 fn get_literal_str<'a, 'b>(
     hash_map: &'a HashMap<TagName, Box<Val>>,
     tag_name: &'b str,
@@ -334,6 +428,10 @@ mod tests {
     use raystack::Number;
     use std::convert::TryInto;
 
+    fn lit_str(s: &str) -> Lit {
+        Lit::Str(s.to_owned())
+    }
+
     fn lit_num(n: f64) -> Lit {
         Lit::Num(Number::new(n, None))
     }
@@ -392,5 +490,23 @@ mod tests {
         let expected = Assign::new(tn("siteId"), assign_val);
         let assign: Assign = val.try_into().unwrap();
         assert_eq!(assign, expected);
+    }
+
+    #[test]
+    fn val_to_throw_str_literal_works() {
+        let val = &ap_parse(r#"{type:"throw", expr:{type:"literal", val:"error message"}}"#).unwrap();
+        let expr = Expr::Lit(lit_str("error message"));
+        let expected = Throw::new(expr);
+        let throw: Throw = val.try_into().unwrap();
+        assert_eq!(throw, expected);
+    }
+
+    #[test]
+    fn val_to_non_empty_list_works() {
+        let val = &ap_parse(r#"{type:"list", vals:[{type:"literal", val:1}]}"#).unwrap();
+        let expr = Expr::Lit(lit_num(1.0));
+        let expected = List::new(vec![expr]);
+        let list: List = val.try_into().unwrap();
+        assert_eq!(list, expected);
     }
 }
