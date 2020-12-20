@@ -6,10 +6,43 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
 // range
+// call
 // group
 // not x
 // filters
 // expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Func {
+    params: Vec<Param>,
+    body: Expr,
+}
+
+impl Func {
+    pub fn new(params: Vec<Param>, body: Expr) -> Self {
+        Self { params, body }
+    }
+}
+
+impl TryFrom<&Val> for Func {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "func").map_err(|_| ())?;
+        let param_vals = get_vals(hash_map, "params").expect("func should contain 'params' tag");
+
+        let mut params = vec![];
+        for param_val in param_vals {
+            let param = param_val.try_into().expect("func param val could not be converted to a Param");
+            params.push(param);
+        }
+
+        let body = get_val(hash_map, "body").expect("func should have a 'body' tag");
+        let body_expr = body.try_into().expect("func body val could not be converted to a Expr");
+
+        Ok(Self::new(params, body_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
@@ -219,6 +252,7 @@ impl TryFrom<&Val> for List {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Assign(Assign),
+    Block(Block),
     Def(Def),
     Id(TagName),
     List(List),
@@ -253,6 +287,11 @@ impl TryFrom<&Val> for Expr {
             return Ok(Expr::List(list));
         };
 
+        let block: Option<Block> = val.try_into().ok();
+        if let Some(block) = block {
+            return Ok(Expr::Block(block));
+        }
+
         Err(())
     }
 }
@@ -263,10 +302,10 @@ fn var_val_to_tag_name(val: &Val) -> Option<TagName> {
     let hash_map = map_for_type(val, "var").ok()?;
     let tag_name = get_literal_str(hash_map, "name")?;
     let tag_name = TagName::new(tag_name.to_owned()).unwrap_or_else(|| {
-        panic!(format!(
+        panic!(
             "'name' tag in a var should be a valid TagName: {}",
             tag_name
-        ))
+        )
     });
     Some(tag_name)
 }
@@ -362,9 +401,15 @@ impl TryFrom<&Val> for DefValue {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Param {
+pub struct Param {
     pub name: TagName,
-    pub default_val: Option<ParamDefaultValue>,
+    pub default: Option<Expr>,
+}
+
+impl Param {
+    pub fn new(name: TagName, default: Option<Expr>) -> Self {
+        Self { name, default }
+    }
 }
 
 fn tn(tag_name: &str) -> TagName {
@@ -400,29 +445,6 @@ impl TryFrom<&ap::Val> for Param {
             },
             _ => Err(()),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum ParamDefaultValue {
-    Lit(Lit),
-}
-
-impl TryFrom<&Val> for ParamDefaultValue {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let lit: Option<Lit> = val.try_into().ok();
-        if let Some(lit) = lit {
-            return Ok(Self::Lit(lit));
-        };
-        Err(())
-    }
-}
-
-impl Param {
-    pub fn new(name: TagName, default_val: Option<ParamDefaultValue>) -> Self {
-        Self { name, default_val }
     }
 }
 
@@ -620,7 +642,14 @@ mod tests {
 
     #[test]
     fn hello_world_works() {
-        todo!()
+        let val = &ap_parse(HELLO_WORLD).unwrap();
+        let params = vec![];
+        let lit_expr = Expr::Lit(lit_str("hello world"));
+        let block = Block::new(vec![lit_expr]);
+        let body = Expr::Block(block);
+        let expected = Func::new(params, body);
+        let func: Func = val.try_into().unwrap();
+        assert_eq!(func, expected);
     }
 
     #[test]
@@ -643,8 +672,8 @@ mod tests {
     fn val_to_param_with_default_val_literal_works() {
         let val =
             &ap_parse(r#"{name:"ahu", def:{type:"literal", val:1}}"#).unwrap();
-        let def_val = ParamDefaultValue::Lit(lit_num(1.0));
-        let expected = Param::new(tn("ahu"), Some(def_val));
+        let default = Expr::Lit(lit_num(1.0));
+        let expected = Param::new(tn("ahu"), Some(default));
         let param: Param = val.try_into().unwrap();
         assert_eq!(param, expected);
     }
