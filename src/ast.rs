@@ -11,6 +11,44 @@ use std::convert::{From, TryFrom, TryInto};
 // expr
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+    func_name: String,
+    args: Vec<Expr>,
+}
+
+impl Call {
+    pub fn new(func_name: String, args: Vec<Expr>) -> Self {
+        Self { func_name, args }
+    }
+}
+
+impl TryFrom<&Val> for Call {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "call").map_err(|_| ())?;
+        let target = get_val(hash_map, "target").expect("call should have 'target' tag");
+        match target {
+            Val::Dict(target_hash_map) => {
+                let func_name = get_literal_str(target_hash_map, "name").expect("call 'target' should have 'name' string tag");
+                let func_name = func_name.to_owned();
+                let args = get_vals(hash_map, "args").expect("call should have 'args' tag");
+
+                let mut exprs = vec![];
+
+                for arg in args {
+                    let expr = arg.try_into().unwrap_or_else(|_| panic!("call arg could not be parsed as an Expr: {:?}", arg));
+                    exprs.push(expr);
+                }
+
+                Ok(Self::new(func_name, exprs))
+            },
+            _ => panic!("expected call 'target' to be a Dict"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Not {
     operand: Expr,
 }
@@ -789,5 +827,16 @@ mod tests {
         let expected = Not::new(operand);
         let not: Not = val.try_into().unwrap();
         assert_eq!(not, expected);
+    }
+
+    #[test]
+    fn val_to_simple_call_works() {
+        let val = &ap_parse(r#"{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"literal", val:1}]}"#).unwrap();
+        let func_name = "readAll".to_owned();
+        let arg = Expr::Lit(lit_num(1.0));
+        let args = vec![arg];
+        let expected = Call::new(func_name, args);
+        let call: Call = val.try_into().unwrap();
+        assert_eq!(call, expected);
     }
 }
