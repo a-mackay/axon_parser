@@ -6,9 +6,31 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
 // call
-// not x
-// filters
+// and
+// + - / * <= <=> >= < > = != ==
 // expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Not {
+    operand: Expr,
+}
+
+impl Not {
+    pub fn new(operand: Expr) -> Self {
+        Self { operand }
+    }
+}
+
+impl TryFrom<&Val> for Not {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "not").map_err(|_| ())?;
+        let operand = get_val(hash_map, "operand").expect("not should have 'operand' tag");
+        let operand_expr = operand.try_into().expect("not 'operand' could not be parsed as an Expr");
+        Ok(Self::new(operand_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Range {
@@ -758,5 +780,14 @@ mod tests {
         let expected = Range::new(start, end);
         let range: Range = val.try_into().unwrap();
         assert_eq!(range, expected);
+    }
+
+    #[test]
+    fn val_to_not_works() {
+        let val = &ap_parse(r#"{type:"not", operand:{type:"literal", val:1}}"#).unwrap();
+        let operand = Expr::Lit(lit_num(1.0));
+        let expected = Not::new(operand);
+        let not: Not = val.try_into().unwrap();
+        assert_eq!(not, expected);
     }
 }
