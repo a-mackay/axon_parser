@@ -280,6 +280,7 @@ pub enum Expr {
     Id(TagName),
     List(List),
     Lit(Lit),
+    Range(Box<Range>),
 }
 
 impl TryFrom<&Val> for Expr {
@@ -315,6 +316,11 @@ impl TryFrom<&Val> for Expr {
             return Ok(Expr::Block(block));
         }
 
+        let range: Option<Range> = val.try_into().ok();
+        if let Some(range) = range {
+            return Ok(Expr::Range(Box::new(range)));
+        }
+
         Err(())
     }
 }
@@ -338,12 +344,12 @@ pub struct Assign {
     /// lhs
     pub name: TagName,
     /// rhs
-    pub val: AssignValue,
+    pub expr: Box<Expr>,
 }
 
 impl Assign {
-    pub fn new(name: TagName, val: AssignValue) -> Self {
-        Self { name, val }
+    pub fn new(name: TagName, expr: Expr) -> Self {
+        Self { name, expr: Box::new(expr) }
     }
 }
 
@@ -364,31 +370,14 @@ impl TryFrom<&Val> for Assign {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum AssignValue {
-    Lit(Lit),
-}
-
-impl TryFrom<&Val> for AssignValue {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let lit: Option<Lit> = val.try_into().ok();
-        if let Some(lit) = lit {
-            return Ok(Self::Lit(lit));
-        };
-        Err(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct Def {
     pub name: TagName,
-    pub val: DefValue,
+    pub expr: Box<Expr>,
 }
 
 impl Def {
-    pub fn new(name: TagName, val: DefValue) -> Self {
-        Self { name, val }
+    pub fn new(name: TagName, expr: Expr) -> Self {
+        Self { name, expr: Box::new(expr) }
     }
 }
 
@@ -403,23 +392,6 @@ impl TryFrom<&Val> for Def {
             .expect("def should have a 'val' tag")
             .try_into()?;
         Ok(Self::new(name, def_val))
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum DefValue {
-    Lit(Lit),
-}
-
-impl TryFrom<&Val> for DefValue {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let lit: Option<Lit> = val.try_into().ok();
-        if let Some(lit) = lit {
-            return Ok(Self::Lit(lit));
-        };
-        Err(())
     }
 }
 
@@ -707,8 +679,8 @@ mod tests {
             r#"{type:"def", name:"siteId", val:{type:"literal", val:1}}"#,
         )
         .unwrap();
-        let def_val = DefValue::Lit(lit_num(1.0));
-        let expected = Def::new(tn("siteId"), def_val);
+        let expr = Expr::Lit(lit_num(1.0));
+        let expected = Def::new(tn("siteId"), expr);
         let def: Def = val.try_into().unwrap();
         assert_eq!(def, expected);
     }
@@ -719,7 +691,7 @@ mod tests {
             r#"{type:"assign", lhs:{type:"var", name:"siteId"}, rhs:{type:"literal", val:1}}"#,
         )
         .unwrap();
-        let assign_val = AssignValue::Lit(lit_num(1.0));
+        let assign_val = Expr::Lit(lit_num(1.0));
         let expected = Assign::new(tn("siteId"), assign_val);
         let assign: Assign = val.try_into().unwrap();
         assert_eq!(assign, expected);
