@@ -13,6 +13,119 @@ use std::convert::{From, TryFrom, TryInto};
 // expr
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Dict {
+    pub map: HashMap<TagName, DictVal>,
+}
+
+impl Dict {
+    pub fn new(map: HashMap<TagName, DictVal>) -> Self {
+        Self { map }
+    }
+}
+
+impl TryFrom<&Val> for Dict {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "dict").map_err(|_| ())?;
+
+        let names = get_vals(hash_map, "names").expect("dict should contain 'names' tag");
+        let mut tag_names = vec![];
+
+        for name in names {
+            match name {
+                Val::Lit(ap::Lit::Str(s)) => {
+                    let tag_name = TagName::new(s.to_owned()).unwrap_or_else(|| panic!(format!("tag name '{}' in dict was not a valid TagName", s)));
+                    tag_names.push(tag_name);
+                },
+                _ => panic!("expected all dict names to be string literals"),
+            }
+        }
+
+        let vals = get_vals(hash_map, "vals").expect("dict should contain 'vals' tag");
+        assert!(vals.len() == names.len());
+        let mut dict_vals = vec![];
+
+        for val in vals {
+            if val_is_marker(val) {
+                dict_vals.push(DictVal::Marker);
+            } else if val_is_remove_marker(val) {
+                dict_vals.push(DictVal::RemoveMarker);
+            } else {
+                let expr = val.try_into().unwrap_or_else(|_| panic!(format!("dict val could not be converted to an Expr: {:?}", val)));
+                dict_vals.push(DictVal::Expr(expr));
+            }
+        }
+
+        assert!(tag_names.len() == dict_vals.len());
+
+        let map = tag_names.into_iter().zip(dict_vals.into_iter()).collect();
+        Ok(Self::new(map))
+    }
+}
+
+fn val_is_marker(val: &Val) -> bool {
+    // val will look like
+    // Dict({TagName("val"): Lit(DictMarker), TagName("type"): Lit(Str("literal"))})
+    // if this function returns true.
+    match val {
+        Val::Dict(hash_map) => {
+            let is_literal_type = type_str(hash_map) == "literal";
+            if !is_literal_type {
+                return false;
+            }
+
+            let key = tn("val");
+            let identifier = hash_map.get(&key);
+            match identifier {
+                Some(inner_val) => {
+                    match inner_val.as_ref() {
+                        Val::Lit(ap::Lit::DictMarker) => true,
+                        _ => false,
+                    }
+                }
+                None => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+fn val_is_remove_marker(val: &Val) -> bool {
+    // val will look like
+    // Dict({TagName("val"): Lit(DictRemoveMarker), TagName("type"): Lit(Str("literal"))})
+    // if this function returns true.
+    match val {
+        Val::Dict(hash_map) => {
+            let is_literal_type = type_str(hash_map) == "literal";
+            if !is_literal_type {
+                return false;
+            }
+
+            let key = tn("val");
+            let identifier = hash_map.get(&key);
+            match identifier {
+                Some(inner_val) => {
+                    match inner_val.as_ref() {
+                        Val::Lit(ap::Lit::DictRemoveMarker) => true,
+                        _ => false,
+                    }
+                }
+                None => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DictVal {
+    Expr(Expr),
+    Marker,
+    RemoveMarker,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Throw {
     expr: Expr,
 }
@@ -279,17 +392,26 @@ pub enum Lit {
     YearMonth(YearMonth),
 }
 
-impl From<&ap::Lit> for Lit {
-    fn from(lit: &ap::Lit) -> Self {
+pub enum ConvertLitError {
+    IsDictMarker,
+    IsDictRemoveMarker,
+}
+
+impl TryFrom<&ap::Lit> for Lit {
+    type Error = ConvertLitError;
+
+    fn try_from(lit: &ap::Lit) -> Result<Self, Self::Error> {
         match lit {
-            ap::Lit::Bool(bool) => Lit::Bool(*bool),
-            ap::Lit::Date(date) => Lit::Date(*date),
-            ap::Lit::Null => Lit::Null,
-            ap::Lit::Num(number) => Lit::Num(number.clone()),
-            ap::Lit::Str(string) => Lit::Str(string.clone()),
-            ap::Lit::Time(time) => Lit::Time(*time),
-            ap::Lit::Uri(uri) => Lit::Uri(uri.clone()),
-            ap::Lit::YearMonth(ym) => Lit::YearMonth(ym.into()),
+            ap::Lit::Bool(bool) => Ok(Lit::Bool(*bool)),
+            ap::Lit::Date(date) => Ok(Lit::Date(*date)),
+            ap::Lit::DictMarker => Err(ConvertLitError::IsDictMarker),
+            ap::Lit::DictRemoveMarker => Err(ConvertLitError::IsDictRemoveMarker),
+            ap::Lit::Null => Ok(Lit::Null),
+            ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
+            ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
+            ap::Lit::Time(time) => Ok(Lit::Time(*time)),
+            ap::Lit::Uri(uri) => Ok(Lit::Uri(uri.clone())),
+            ap::Lit::YearMonth(ym) => Ok(Lit::YearMonth(ym.into())),
         }
     }
 }
@@ -302,7 +424,10 @@ impl TryFrom<&Val> for Lit {
         let val = get_val(hash_map, "val")
             .expect("type 'literal' should have 'val' tag");
         match val {
-            Val::Lit(lit) => Ok(lit.into()),
+            Val::Lit(lit) => {
+                let lit = lit.try_into().map_err(|_| ())?;
+                Ok(lit)
+            },
             _ => panic!("expected type 'literal' 'val' tag to be a literal"),
         }
     }
@@ -508,5 +633,25 @@ mod tests {
         let expected = List::new(vec![expr]);
         let list: List = val.try_into().unwrap();
         assert_eq!(list, expected);
+    }
+
+    #[test]
+    fn val_to_non_empty_dict_works() {
+        let val = &ap_parse(r#"{type:"dict", names:["markerTag", "deleteThisTag", "standardTag"], vals:[{type:"literal", val}, {type:"literal", val:removeMarker()}, {type:"literal", val:1}]}"#).unwrap();
+
+        let mut map: HashMap<TagName, DictVal> = HashMap::new();
+        let tag1 = tn("markerTag");
+        let val1 = DictVal::Marker;
+        let tag2 = tn("deleteThisTag");
+        let val2 = DictVal::RemoveMarker;
+        let tag3 = tn("standardTag");
+        let val3 = DictVal::Expr(Expr::Lit(lit_num(1.0)));
+        map.insert(tag1, val1);
+        map.insert(tag2, val2);
+        map.insert(tag3, val3);
+
+        let expected = Dict::new(map);
+        let dict: Dict = val.try_into().unwrap();
+        assert_eq!(dict, expected);
     }
 }
