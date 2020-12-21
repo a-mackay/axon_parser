@@ -5,8 +5,6 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// if
-// trycatch
 // defcomp
 // qname
 // -varName
@@ -15,6 +13,74 @@ use std::convert::{From, TryFrom, TryInto};
 // ref literals
 // symbol literals ^symbol
 // + - / * <= <=> >= < > = != ==
+//
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TryCatch {
+    try_expr: Expr,
+    exception_name: Option<String>,
+    catch_expr: Expr,
+}
+
+impl TryCatch {
+    pub fn new(try_expr: Expr, exception_name: Option<String>, catch_expr: Expr) -> Self {
+        Self { try_expr, exception_name, catch_expr }
+    }
+}
+
+impl TryFrom<&Val> for TryCatch {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "try").map_err(|_| ())?;
+        let try_val = get_val(hash_map, "tryExpr").expect("try should contain 'tryExpr' tag");
+        let catch_val = get_val(hash_map, "catchExpr").expect("try should contain 'catchExpr' tag");
+        let exc_name_val = get_val(hash_map, "errVarName");
+
+        let try_expr = try_val.try_into().expect("try 'tryExpr' could not be parsed as an Expr");
+        let catch_expr = catch_val.try_into().expect("try 'catchExpr' could not be parsed as an Expr");
+        let exc_name = match exc_name_val {
+            Some(Val::Lit(ap::Lit::Str(exc_name))) => Some(exc_name.to_owned()),
+            None => None,
+            _ => panic!("expected try 'errVarName' to be a string literal: {:?}", val)
+        };
+
+        Ok(Self::new(try_expr, exc_name, catch_expr))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct If {
+    cond: Expr,
+    if_expr: Expr,
+    else_expr: Option<Expr>,
+}
+
+impl If {
+    pub fn new(cond: Expr, if_expr: Expr, else_expr: Option<Expr>) -> Self {
+        Self { cond, if_expr, else_expr }
+    }
+}
+
+impl TryFrom<&Val> for If {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "if").map_err(|_| ())?;
+        let cond_val = get_val(hash_map, "cond").expect("if should contain 'cond' tag");
+        let if_val = get_val(hash_map, "ifExpr").expect("if should contain 'ifExpr' tag");
+        let else_val = get_val(hash_map, "elseExpr");
+
+        let cond_expr = cond_val.try_into().expect("if 'cond' could not be parsed as an Expr");
+        let if_expr = if_val.try_into().expect("if 'ifExpr' could not be parsed as an Expr");
+        let else_expr = match else_val {
+            Some(else_val) => Some(else_val.try_into().expect("if 'elseExpr' could not be parsed as an Expr")),
+            None => None,
+        };
+
+        Ok(Self::new(cond_expr, if_expr, else_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Or {
@@ -474,11 +540,13 @@ pub enum Expr {
     Dict(Dict),
     DotCall(DotCall),
     Id(TagName),
+    If(Box<If>),
     List(List),
     Lit(Lit),
     Or(Box<Or>),
     Range(Box<Range>),
     TrapCall(Box<TrapCall>),
+    TryCatch(Box<TryCatch>),
 }
 
 impl TryFrom<&Val> for Expr {
@@ -547,6 +615,16 @@ impl TryFrom<&Val> for Expr {
         let or: Option<Or> = val.try_into().ok();
         if let Some(or) = or {
             return Ok(Expr::Or(Box::new(or)));
+        }
+
+        let try_catch: Option<TryCatch> = val.try_into().ok();
+        if let Some(try_catch) = try_catch {
+            return Ok(Expr::TryCatch(Box::new(try_catch)));
+        }
+
+        let iff: Option<If> = val.try_into().ok();
+        if let Some(iff) = iff {
+            return Ok(Expr::If(Box::new(iff)));
         }
 
         Err(())
@@ -1047,5 +1125,49 @@ mod tests {
         let expected = Or::new(lhs, rhs);
         let or: Or = val.try_into().unwrap();
         assert_eq!(or, expected);
+    }
+
+    #[test]
+    fn val_to_if_no_else_works() {
+        let val = &ap_parse(r#"{type:"if", cond:{type:"var", name:"a"}, ifExpr:{type:"var", name:"b"}}"#).unwrap();
+        let cond = Expr::Id(tn("a"));
+        let if_expr = Expr::Id(tn("b"));
+        let else_expr = None;
+        let expected = If::new(cond, if_expr, else_expr);
+        let iff: If = val.try_into().unwrap();
+        assert_eq!(iff, expected);
+    }
+
+    #[test]
+    fn val_to_if_with_else_works() {
+        let val = &ap_parse(r#"{type:"if", cond:{type:"var", name:"a"}, ifExpr:{type:"var", name:"b"}, elseExpr:{type:"var", name:"c"}}"#).unwrap();
+        let cond = Expr::Id(tn("a"));
+        let if_expr = Expr::Id(tn("b"));
+        let else_expr = Some(Expr::Id(tn("c")));
+        let expected = If::new(cond, if_expr, else_expr);
+        let iff: If = val.try_into().unwrap();
+        assert_eq!(iff, expected);
+    }
+
+    #[test]
+    fn val_to_try_catch_no_exc_name_works() {
+        let val = &ap_parse(r#"{type:"try", tryExpr:{type:"var", name:"a"}, catchExpr:{type:"var", name:"b"}}"#).unwrap();
+        let try_expr = Expr::Id(tn("a"));
+        let catch_expr = Expr::Id(tn("b"));
+        let exc_name = None;
+        let expected = TryCatch::new(try_expr, exc_name, catch_expr);
+        let try_catch: TryCatch = val.try_into().unwrap();
+        assert_eq!(try_catch, expected);
+    }
+
+    #[test]
+    fn val_to_try_catch_with_exc_name_works() {
+        let val = &ap_parse(r#"{type:"try", tryExpr:{type:"var", name:"a"}, errVarName:"ex", catchExpr:{type:"var", name:"b"}}"#).unwrap();
+        let try_expr = Expr::Id(tn("a"));
+        let catch_expr = Expr::Id(tn("b"));
+        let exc_name = Some("ex".to_owned());
+        let expected = TryCatch::new(try_expr, exc_name, catch_expr);
+        let try_catch: TryCatch = val.try_into().unwrap();
+        assert_eq!(try_catch, expected);
     }
 }
