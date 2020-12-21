@@ -771,6 +771,7 @@ pub enum Expr {
     Def(Def),
     Dict(Dict),
     DotCall(DotCall),
+    Func(Box<Func>),
     Id(TagName),
     If(Box<If>),
     List(List),
@@ -911,6 +912,11 @@ impl TryFrom<&Val> for Expr {
         let iff: Option<If> = val.try_into().ok();
         if let Some(iff) = iff {
             return Ok(Expr::If(Box::new(iff)));
+        }
+
+        let func: Option<Func> = val.try_into().ok();
+        if let Some(func) = func {
+            return Ok(Expr::Func(Box::new(func)));
         }
 
         Err(())
