@@ -336,6 +336,7 @@ impl TryFrom<&Val> for List {
 pub enum Expr {
     Assign(Assign),
     Block(Block),
+    Call(Call),
     Def(Def),
     Id(TagName),
     List(List),
@@ -379,6 +380,11 @@ impl TryFrom<&Val> for Expr {
         let range: Option<Range> = val.try_into().ok();
         if let Some(range) = range {
             return Ok(Expr::Range(Box::new(range)));
+        }
+
+        let call: Option<Call> = val.try_into().ok();
+        if let Some(call) = call {
+            return Ok(Expr::Call(call))
         }
 
         Err(())
