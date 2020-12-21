@@ -1588,6 +1588,7 @@ mod tests {
     #[test]
     fn old_chart_demo_works() {
         let val = &ap_parse(include_str!("../tests/old_chart_demo.txt")).unwrap();
-        let _func: Func = val.try_into().unwrap();
+        let func: Func = val.try_into().unwrap();
+        println!("{:#?}", func);
     }
 }
