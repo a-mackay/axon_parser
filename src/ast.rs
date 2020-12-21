@@ -11,6 +11,42 @@ use std::convert::{From, TryFrom, TryInto};
 // expr
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TrapCall {
+    target: Expr,
+    key: String,
+}
+
+impl TrapCall {
+    pub fn new(target: Expr, key: String) -> Self {
+        Self { target, key }
+    }
+}
+
+impl TryFrom<&Val> for TrapCall {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "trapCall").map_err(|_| ())?;
+        let args = get_vals(hash_map, "args").expect("trapCall should have 'args' tag");
+
+        assert!(args.len() == 2, format!("trapCall 'args' list should have exactly two elements: {:?}", args));
+        let target = &args[0];
+        let key = &args[1];
+        let target = target.try_into().expect("trapCall 'target' could not be parsed as an Expr");
+
+        let key = match key {
+            Val::Dict(key_hash_map) => {
+                let key_str = get_literal_str(key_hash_map, "val").expect("trapCall key hash map should contain 'val' tag");
+                key_str.to_owned()
+            },
+            _ => panic!("expected trapCall key Val to be a Dict")
+        };
+
+        Ok(Self::new(target, key))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
     func_name: String,
     args: Vec<Expr>,
@@ -376,11 +412,13 @@ pub enum Expr {
     Block(Block),
     Call(Call),
     Def(Def),
+    Dict(Dict),
     DotCall(DotCall),
     Id(TagName),
     List(List),
     Lit(Lit),
     Range(Box<Range>),
+    TrapCall(Box<TrapCall>),
 }
 
 impl TryFrom<&Val> for Expr {
@@ -411,6 +449,11 @@ impl TryFrom<&Val> for Expr {
             return Ok(Expr::List(list));
         };
 
+        let dict: Option<Dict> = val.try_into().ok();
+        if let Some(dict) = dict {
+            return Ok(Expr::Dict(dict));
+        };
+
         let block: Option<Block> = val.try_into().ok();
         if let Some(block) = block {
             return Ok(Expr::Block(block));
@@ -429,6 +472,11 @@ impl TryFrom<&Val> for Expr {
         let dot_call: Option<DotCall> = val.try_into().ok();
         if let Some(dot_call) = dot_call {
             return Ok(Expr::DotCall(dot_call))
+        }
+
+        let trap_call: Option<TrapCall> = val.try_into().ok();
+        if let Some(trap_call) = trap_call {
+            return Ok(Expr::TrapCall(Box::new(trap_call)))
         }
 
         Err(())
@@ -899,5 +947,15 @@ mod tests {
         let expected = DotCall::new(func_name, args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
+    }
+
+    #[test]
+    fn val_to_trap_call_works() {
+        let val = &ap_parse(r#"{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dict", names:[], vals:[]}, {type:"literal", val:"missingTag"}]}"#).unwrap();
+        let key = "missingTag".to_owned();
+        let target = Expr::Dict(Dict::new(HashMap::new()));
+        let expected = TrapCall::new(target, key);
+        let trap_call: TrapCall = val.try_into().unwrap();
+        assert_eq!(trap_call, expected);
     }
 }
