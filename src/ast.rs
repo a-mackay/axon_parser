@@ -11,6 +11,44 @@ use std::convert::{From, TryFrom, TryInto};
 // expr
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DotCall {
+    func_name: String,
+    args: Vec<Expr>,
+}
+
+impl DotCall {
+    pub fn new(func_name: String, args: Vec<Expr>) -> Self {
+        Self { func_name, args }
+    }
+}
+
+impl TryFrom<&Val> for DotCall {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "dotCall").map_err(|_| ())?;
+        let target = get_val(hash_map, "target").expect("dotCall should have 'target' tag");
+        match target {
+            Val::Dict(target_hash_map) => {
+                let func_name = get_literal_str(target_hash_map, "name").expect("dotCall 'target' should have 'name' string tag");
+                let func_name = func_name.to_owned();
+                let args = get_vals(hash_map, "args").expect("dotCall should have 'args' tag");
+
+                let mut exprs = vec![];
+
+                for arg in args {
+                    let expr = arg.try_into().unwrap_or_else(|_| panic!("dotCall arg could not be parsed as an Expr: {:?}", arg));
+                    exprs.push(expr);
+                }
+
+                Ok(Self::new(func_name, exprs))
+            },
+            _ => panic!("expected dotCall 'target' to be a Dict"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Call {
     func_name: String,
     args: Vec<Expr>,
@@ -338,6 +376,7 @@ pub enum Expr {
     Block(Block),
     Call(Call),
     Def(Def),
+    DotCall(DotCall),
     Id(TagName),
     List(List),
     Lit(Lit),
@@ -385,6 +424,11 @@ impl TryFrom<&Val> for Expr {
         let call: Option<Call> = val.try_into().ok();
         if let Some(call) = call {
             return Ok(Expr::Call(call))
+        }
+
+        let dot_call: Option<DotCall> = val.try_into().ok();
+        if let Some(dot_call) = dot_call {
+            return Ok(Expr::DotCall(dot_call))
         }
 
         Err(())
@@ -844,5 +888,16 @@ mod tests {
         let expected = Call::new(func_name, args);
         let call: Call = val.try_into().unwrap();
         assert_eq!(call, expected);
+    }
+
+    #[test]
+    fn val_to_simple_dot_call_works() {
+        let val = &ap_parse(r#"{type:"dotCall", target:{type:"var", name:"parseNumber"}, args:[{type:"literal", val:1}]}"#).unwrap();
+        let func_name = "parseNumber".to_owned();
+        let arg = Expr::Lit(lit_num(1.0));
+        let args = vec![arg];
+        let expected = DotCall::new(func_name, args);
+        let dot_call: DotCall = val.try_into().unwrap();
+        assert_eq!(dot_call, expected);
     }
 }
