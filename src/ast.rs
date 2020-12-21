@@ -1,19 +1,39 @@
 use axon_parseast_parser as ap;
 use axon_parseast_parser::Val;
 use chrono::{NaiveDate, NaiveTime};
-use raystack::{Number, TagName};
+use raystack::{Number, Ref, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
+// + - / * <= <=> >= < > = != ==
+
+// TODO later
 // defcomp
 // qname
-// -varName
-// trailing lambda
 // _ params like run(_, _)
-// ref literals
 // symbol literals ^symbol
-// + - / * <= <=> >= < > = != ==
-//
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Neg {
+    operand: Expr,
+}
+
+impl Neg {
+    pub fn new(operand: Expr) -> Neg {
+        Self { operand }
+    }
+}
+
+impl TryFrom<&Val> for Neg {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "neg").map_err(|_| ())?;
+        let operand = get_val(hash_map, "operand").expect("neg should have 'operand' tag");
+        let operand_expr = operand.try_into().expect("neg 'operand' could not be parsed as an Expr");
+        Ok(Self::new(operand_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TryCatch {
@@ -755,6 +775,7 @@ pub enum Lit {
     Date(NaiveDate),
     Null,
     Num(Number),
+    Ref(Ref),
     Str(String),
     Time(NaiveTime),
     Uri(String),
@@ -779,6 +800,7 @@ impl TryFrom<&ap::Lit> for Lit {
             }
             ap::Lit::Null => Ok(Lit::Null),
             ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
+            ap::Lit::Ref(reff) => Ok(Lit::Ref(reff.clone())),
             ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
             ap::Lit::Time(time) => Ok(Lit::Time(*time)),
             ap::Lit::Uri(uri) => Ok(Lit::Uri(uri.clone())),
@@ -1169,5 +1191,14 @@ mod tests {
         let expected = TryCatch::new(try_expr, exc_name, catch_expr);
         let try_catch: TryCatch = val.try_into().unwrap();
         assert_eq!(try_catch, expected);
+    }
+
+    #[test]
+    fn val_to_neg_works() {
+        let val = &ap_parse(r#"{type:"neg", operand:{type:"var", name:"a"}}"#).unwrap();
+        let operand = Expr::Id(tn("a"));
+        let expected = Neg::new(operand);
+        let neg: Neg = val.try_into().unwrap();
+        assert_eq!(neg, expected);
     }
 }
