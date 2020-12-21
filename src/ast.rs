@@ -5,8 +5,15 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// and
-// or
+// if
+// trycatch
+// defcomp
+// qname
+// -varName
+// trailing lambda
+// _ params like run(_, _)
+// ref literals
+// symbol literals ^symbol
 // + - / * <= <=> >= < > = != ==
 
 #[derive(Debug, Clone, PartialEq)]
