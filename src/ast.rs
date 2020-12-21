@@ -956,6 +956,31 @@ pub enum Lit {
     YearMonth(YearMonth),
 }
 
+impl Lit {
+    pub fn to_axon_code(&self) -> String {
+        match self {
+            Self::Bool(true) => "true".to_owned(),
+            Self::Bool(false) => "false".to_owned(),
+            Self::Date(d) => d.format("%Y-%m-%d").to_string(),
+            Self::Null => "null".to_owned(),
+            Self::Num(n) => number_to_axon_code(n),
+            Self::Ref(r) => r.to_axon_code().to_owned(),
+            Self::Str(s) => format!("{:?}", s),
+            Self::Time(t) => t.format("%H:%M:%S").to_string(),
+            Self::Uri(s) => format!("`{}`", s),
+            Self::YearMonth(ym) => ym.to_axon_code(),
+        }
+    }
+}
+
+fn number_to_axon_code(n: &Number) -> String {
+    let scalar = n.value();
+    match n.unit() {
+        Some(unit) => format!("{}{}", scalar, unit),
+        None => format!("{}", scalar),
+    }
+}
+
 pub enum ConvertLitError {
     IsDictMarker,
     IsDictRemoveMarker,
@@ -1069,6 +1094,11 @@ impl YearMonth {
     pub fn new(year: u32, month: Month) -> Self {
         Self { year, month }
     }
+
+    pub fn to_axon_code(&self) -> String {
+        let month: u32 = (&self.month).into();
+        format!("{}-{:0>2}", self.year, month)
+    }
 }
 
 impl From<&ap::YearMonth> for YearMonth {
@@ -1096,6 +1126,25 @@ pub enum Month {
     Oct,
     Nov,
     Dec,
+}
+
+impl From<&Month> for u32 {
+    fn from(m: &Month) -> u32 {
+        match m {
+            Month::Jan => 1,
+            Month::Feb => 2,
+            Month::Mar => 3,
+            Month::Apr => 4,
+            Month::May => 5,
+            Month::Jun => 6,
+            Month::Jul => 7,
+            Month::Aug => 8,
+            Month::Sep => 9,
+            Month::Oct => 10,
+            Month::Nov => 11,
+            Month::Dec => 12,
+        }
+    }
 }
 
 impl From<ap::Month> for Month {
@@ -1499,5 +1548,18 @@ mod tests {
         let val = &ap_parse(include_str!("../tests/old_chart_demo_kwh.txt")).unwrap();
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
+    }
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+
+    #[test]
+    fn year_month_works() {
+        let ym = YearMonth::new(2020, Month::Jan);
+        assert_eq!(ym.to_axon_code(), "2020-01");
+        let ym = YearMonth::new(2020, Month::Dec);
+        assert_eq!(ym.to_axon_code(), "2020-12");
     }
 }
