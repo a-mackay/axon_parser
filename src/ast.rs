@@ -185,8 +185,8 @@ fn val_to_bin_op(val: &Val, bin_op_id: BinOpId) -> Result<BinOp, MapForTypeError
     let hash_map = map_for_type(val, type_str)?;
     let lhs = get_val(hash_map, "lhs").expect("bin op {:?} should have 'lhs' tag");
     let rhs = get_val(hash_map, "rhs").expect("bin op {:?} should have 'rhs' tag");
-    let lhs_expr = lhs.try_into().expect("bin op {:?} 'lhs' could not be parsed as an Expr");
-    let rhs_expr = rhs.try_into().expect("bin op {:?} 'rhs' could not be parsed as an Expr");
+    let lhs_expr = lhs.try_into().unwrap_or_else(|_| panic!("bin op {:?} 'lhs' could not be parsed as an Expr", lhs));
+    let rhs_expr = rhs.try_into().unwrap_or_else(|_| panic!("bin op {:?} 'rhs' could not be parsed as an Expr", rhs));
     let bin_op = BinOp::new(lhs_expr, bin_op_id, rhs_expr);
     Ok(bin_op)
 }
@@ -752,7 +752,19 @@ impl TryFrom<&Val> for List {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    Add(Box<Add>),
     And(Box<And>),
+    Cmp(Box<Cmp>),
+    Div(Box<Div>),
+    Eq(Box<Eq>),
+    Gt(Box<Gt>),
+    Gte(Box<Gte>),
+    Lt(Box<Lt>),
+    Lte(Box<Lte>),
+    Mul(Box<Mul>),
+    Ne(Box<Ne>),
+    Or(Box<Or>),
+    Sub(Box<Sub>),
     Assign(Assign),
     Block(Block),
     Call(Call),
@@ -763,7 +775,6 @@ pub enum Expr {
     If(Box<If>),
     List(List),
     Lit(Lit),
-    Or(Box<Or>),
     Range(Box<Range>),
     TrapCall(Box<TrapCall>),
     TryCatch(Box<TryCatch>),
@@ -827,14 +838,69 @@ impl TryFrom<&Val> for Expr {
             return Ok(Expr::TrapCall(Box::new(trap_call)))
         }
 
+        let add: Option<Add> = val.try_into().ok();
+        if let Some(add) = add {
+            return Ok(Expr::Add(Box::new(add)));
+        }
+
         let and: Option<And> = val.try_into().ok();
         if let Some(and) = and {
             return Ok(Expr::And(Box::new(and)));
         }
 
+        let cmp: Option<Cmp> = val.try_into().ok();
+        if let Some(cmp) = cmp {
+            return Ok(Expr::Cmp(Box::new(cmp)));
+        }
+
+        let div: Option<Div> = val.try_into().ok();
+        if let Some(div) = div {
+            return Ok(Expr::Div(Box::new(div)));
+        }
+
+        let eq: Option<Eq> = val.try_into().ok();
+        if let Some(eq) = eq {
+            return Ok(Expr::Eq(Box::new(eq)));
+        }
+
+        let gt: Option<Gt> = val.try_into().ok();
+        if let Some(gt) = gt {
+            return Ok(Expr::Gt(Box::new(gt)))
+        }
+
+        let gte: Option<Gte> = val.try_into().ok();
+        if let Some(gte) = gte {
+            return Ok(Expr::Gte(Box::new(gte)));
+        }
+
+        let lt: Option<Lt> = val.try_into().ok();
+        if let Some(lt) = lt {
+            return Ok(Expr::Lt(Box::new(lt)));
+        }
+
+        let lte: Option<Lte> = val.try_into().ok();
+        if let Some(lte) = lte {
+            return Ok(Expr::Lte(Box::new(lte)));
+        }
+
+        let mul: Option<Mul> = val.try_into().ok();
+        if let Some(mul) = mul {
+            return Ok(Expr::Mul(Box::new(mul)));
+        }
+
+        let ne: Option<Ne> = val.try_into().ok();
+        if let Some(ne) = ne {
+            return Ok(Expr::Ne(Box::new(ne)));
+        }
+
         let or: Option<Or> = val.try_into().ok();
         if let Some(or) = or {
             return Ok(Expr::Or(Box::new(or)));
+        }
+
+        let sub: Option<Sub> = val.try_into().ok();
+        if let Some(sub) = sub {
+            return Ok(Expr::Sub(Box::new(sub)));
         }
 
         let try_catch: Option<TryCatch> = val.try_into().ok();
