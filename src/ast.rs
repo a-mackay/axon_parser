@@ -5,13 +5,265 @@ use raystack::{Number, Ref, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// + - / * <= <=> >= < > = != ==
-
 // TODO later
 // defcomp
 // qname
 // _ params like run(_, _)
 // symbol literals ^symbol
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Add(BinOp);
+
+impl TryFrom<&Val> for Add {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Add).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct And(BinOp);
+
+impl TryFrom<&Val> for And {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::And).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cmp(BinOp);
+
+impl TryFrom<&Val> for Cmp {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Cmp).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Div(BinOp);
+
+impl TryFrom<&Val> for Div {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Div).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Eq(BinOp);
+
+impl TryFrom<&Val> for Eq {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Eq).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gt(BinOp);
+
+impl TryFrom<&Val> for Gt {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Gt).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gte(BinOp);
+
+impl TryFrom<&Val> for Gte {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Gte).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lt(BinOp);
+
+impl TryFrom<&Val> for Lt {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Lt).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lte(BinOp);
+
+impl TryFrom<&Val> for Lte {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Lte).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mul(BinOp);
+
+impl TryFrom<&Val> for Mul {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Mul).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ne(BinOp);
+
+impl TryFrom<&Val> for Ne {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Ne).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sub(BinOp);
+
+impl TryFrom<&Val> for Sub {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Sub).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Or(BinOp);
+
+impl TryFrom<&Val> for Or {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let bin_op = val_to_bin_op(val, BinOpId::Or).map_err(|_| ())?;
+        Ok(Self(bin_op))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BinOp {
+    lhs: Expr,
+    bin_op_id: BinOpId,
+    rhs: Expr,
+}
+
+impl BinOp {
+    pub fn new(lhs: Expr, bin_op_id: BinOpId, rhs: Expr) -> Self {
+        Self { lhs, bin_op_id, rhs }
+    }
+}
+
+fn val_to_bin_op(val: &Val, bin_op_id: BinOpId) -> Result<BinOp, MapForTypeError> {
+    let type_str = bin_op_id.type_str();
+    let hash_map = map_for_type(val, type_str)?;
+    let lhs = get_val(hash_map, "lhs").expect("bin op {:?} should have 'lhs' tag");
+    let rhs = get_val(hash_map, "rhs").expect("bin op {:?} should have 'rhs' tag");
+    let lhs_expr = lhs.try_into().expect("bin op {:?} 'lhs' could not be parsed as an Expr");
+    let rhs_expr = rhs.try_into().expect("bin op {:?} 'rhs' could not be parsed as an Expr");
+    let bin_op = BinOp::new(lhs_expr, bin_op_id, rhs_expr);
+    Ok(bin_op)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinOpId {
+    Add,
+    And,
+    Cmp,
+    Div,
+    Eq,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+    Mul,
+    Ne,
+    Or,
+    Sub,
+}
+
+impl BinOpId {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "add" => Some(Self::Add),
+            "and" => Some(Self::And),
+            "cmp" => Some(Self::Cmp),
+            "div" => Some(Self::Div),
+            "eq" => Some(Self::Eq),
+            "gt" => Some(Self::Gt),
+            "ge" => Some(Self::Gte),
+            "lt" => Some(Self::Lt),
+            "le" => Some(Self::Lte),
+            "mul" => Some(Self::Mul),
+            "ne" => Some(Self::Ne),
+            "or" => Some(Self::Or),
+            "sub" => Some(Self::Sub),
+            _ => None,
+        }
+    }
+
+    fn type_str(&self) -> &str {
+        match self {
+            Self::Add => "add",
+            Self::And => "and",
+            Self::Cmp => "cmp",
+            Self::Div => "div",
+            Self::Eq => "eq",
+            Self::Gt => "gt",
+            Self::Gte => "ge",
+            Self::Lt => "lt",
+            Self::Lte => "le",
+            Self::Mul => "mul",
+            Self::Ne => "ne",
+            Self::Or => "or",
+            Self::Sub => "sub",
+        }
+    }
+
+    fn to_symbol(&self) -> &str {
+        match self {
+            Self::Add => "+",
+            Self::And => "and",
+            Self::Cmp => "<=>",
+            Self::Div => "/",
+            Self::Eq => "==",
+            Self::Gt => ">",
+            Self::Gte => ">=",
+            Self::Lt => "<",
+            Self::Lte => "<=",
+            Self::Mul => "*",
+            Self::Ne => "!=",
+            Self::Or => "or",
+            Self::Sub => "-",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Neg {
@@ -99,58 +351,6 @@ impl TryFrom<&Val> for If {
         };
 
         Ok(Self::new(cond_expr, if_expr, else_expr))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Or {
-    lhs: Expr,
-    rhs: Expr,
-}
-
-impl Or {
-    pub fn new(lhs: Expr, rhs: Expr) -> Self {
-        Self { lhs, rhs }
-    }
-}
-
-impl TryFrom<&Val> for Or {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let hash_map = map_for_type(val, "or").map_err(|_| ())?;
-        let lhs = get_val(hash_map, "lhs").expect("or should have 'lhs' tag");
-        let rhs = get_val(hash_map, "rhs").expect("or should have 'rhs' tag");
-
-        let lhs_expr = lhs.try_into().expect("or 'lhs' could not be parsed as an Expr");
-        let rhs_expr = rhs.try_into().expect("or 'lhs' could not be parsed as an Expr");
-        Ok(Self::new(lhs_expr, rhs_expr))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct And {
-    lhs: Expr,
-    rhs: Expr,
-}
-
-impl And {
-    pub fn new(lhs: Expr, rhs: Expr) -> Self {
-        Self { lhs, rhs }
-    }
-}
-
-impl TryFrom<&Val> for And {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let hash_map = map_for_type(val, "and").map_err(|_| ())?;
-        let lhs = get_val(hash_map, "lhs").expect("and should have 'lhs' tag");
-        let rhs = get_val(hash_map, "rhs").expect("and should have 'rhs' tag");
-
-        let lhs_expr = lhs.try_into().expect("and 'lhs' could not be parsed as an Expr");
-        let rhs_expr = rhs.try_into().expect("and 'lhs' could not be parsed as an Expr");
-        Ok(Self::new(lhs_expr, rhs_expr))
     }
 }
 
@@ -842,7 +1042,8 @@ fn map_for_type<'a, 'b>(
     }
 }
 
-enum MapForTypeError {
+#[derive(Debug, Clone, PartialEq)]
+pub enum MapForTypeError {
     NotDict,
     TypeStringMismatch,
 }
@@ -1134,7 +1335,7 @@ mod tests {
         let val = &ap_parse(r#"{type:"and", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
         let lhs = Expr::Id(tn("a"));
         let rhs = Expr::Id(tn("b"));
-        let expected = And::new(lhs, rhs);
+        let expected = And(BinOp::new(lhs, BinOpId::And, rhs));
         let and: And = val.try_into().unwrap();
         assert_eq!(and, expected);
     }
@@ -1144,9 +1345,119 @@ mod tests {
         let val = &ap_parse(r#"{type:"or", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
         let lhs = Expr::Id(tn("a"));
         let rhs = Expr::Id(tn("b"));
-        let expected = Or::new(lhs, rhs);
+        let expected = Or(BinOp::new(lhs, BinOpId::Or, rhs));
         let or: Or = val.try_into().unwrap();
         assert_eq!(or, expected);
+    }
+
+    #[test]
+    fn val_to_add_works() {
+        let val = &ap_parse(r#"{type:"add", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Add(BinOp::new(lhs, BinOpId::Add, rhs));
+        let add: Add = val.try_into().unwrap();
+        assert_eq!(add, expected);
+    }
+
+    #[test]
+    fn val_to_cmp_works() {
+        let val = &ap_parse(r#"{type:"cmp", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Cmp(BinOp::new(lhs, BinOpId::Cmp, rhs));
+        let cmp: Cmp = val.try_into().unwrap();
+        assert_eq!(cmp, expected);
+    }
+
+    #[test]
+    fn val_to_div_works() {
+        let val = &ap_parse(r#"{type:"div", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Div(BinOp::new(lhs, BinOpId::Div, rhs));
+        let div: Div = val.try_into().unwrap();
+        assert_eq!(div, expected);
+    }
+
+    #[test]
+    fn val_to_eq_works() {
+        let val = &ap_parse(r#"{type:"eq", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Eq(BinOp::new(lhs, BinOpId::Eq, rhs));
+        let eq: Eq = val.try_into().unwrap();
+        assert_eq!(eq, expected);
+    }
+
+    #[test]
+    fn val_to_gt_works() {
+        let val = &ap_parse(r#"{type:"gt", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Gt(BinOp::new(lhs, BinOpId::Gt, rhs));
+        let gt: Gt = val.try_into().unwrap();
+        assert_eq!(gt, expected);
+    }
+
+    #[test]
+    fn val_to_gte_works() {
+        let val = &ap_parse(r#"{type:"ge", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Gte(BinOp::new(lhs, BinOpId::Gte, rhs));
+        let gte: Gte = val.try_into().unwrap();
+        assert_eq!(gte, expected);
+    }
+
+    #[test]
+    fn val_to_lt_works() {
+        let val = &ap_parse(r#"{type:"lt", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Lt(BinOp::new(lhs, BinOpId::Lt, rhs));
+        let lt: Lt = val.try_into().unwrap();
+        assert_eq!(lt, expected);
+    }
+
+    #[test]
+    fn val_to_lte_works() {
+        let val = &ap_parse(r#"{type:"le", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Lte(BinOp::new(lhs, BinOpId::Lte, rhs));
+        let lte: Lte = val.try_into().unwrap();
+        assert_eq!(lte, expected);
+    }
+
+    #[test]
+    fn val_to_mul_works() {
+        let val = &ap_parse(r#"{type:"mul", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Mul(BinOp::new(lhs, BinOpId::Mul, rhs));
+        let mul: Mul = val.try_into().unwrap();
+        assert_eq!(mul, expected);
+    }
+
+    #[test]
+    fn val_to_ne_works() {
+        let val = &ap_parse(r#"{type:"ne", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Ne(BinOp::new(lhs, BinOpId::Ne, rhs));
+        let ne: Ne = val.try_into().unwrap();
+        assert_eq!(ne, expected);
+    }
+
+    #[test]
+    fn val_to_sub_works() {
+        let val = &ap_parse(r#"{type:"sub", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Sub(BinOp::new(lhs, BinOpId::Sub, rhs));
+        let sub: Sub = val.try_into().unwrap();
+        assert_eq!(sub, expected);
     }
 
     #[test]
@@ -1200,5 +1511,11 @@ mod tests {
         let expected = Neg::new(operand);
         let neg: Neg = val.try_into().unwrap();
         assert_eq!(neg, expected);
+    }
+
+    #[test]
+    fn old_chart_demo_works() {
+        let val = &ap_parse(include_str!("../tests/old_chart_demo.txt")).unwrap();
+        let _func: Func = val.try_into().unwrap();
     }
 }
