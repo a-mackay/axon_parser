@@ -11,161 +11,70 @@ use std::convert::{From, TryFrom, TryInto};
 // _ params like run(_, _)
 // symbol literals ^symbol
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Add(BinOp);
+macro_rules! impl_try_from_val_ref_for {
+    ($type_name:ty, $bin_op:expr) => {
+        impl TryFrom<&Val> for $type_name {
+            type Error = ();
 
-impl TryFrom<&Val> for Add {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Add).map_err(|_| ())?;
-        Ok(Self(bin_op))
+            fn try_from(val: &Val) -> Result<Self, Self::Error> {
+                let op = val_to_bin_op(val, $bin_op).map_err(|_| ())?;
+                Ok(Self(op))
+            }
+        }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Add(BinOp);
+impl_try_from_val_ref_for!(Add, BinOpId::Add);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct And(BinOp);
-
-impl TryFrom<&Val> for And {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::And).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(And, BinOpId::And);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cmp(BinOp);
-
-impl TryFrom<&Val> for Cmp {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Cmp).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Cmp, BinOpId::Cmp);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Div(BinOp);
-
-impl TryFrom<&Val> for Div {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Div).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Div, BinOpId::Div);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Eq(BinOp);
-
-impl TryFrom<&Val> for Eq {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Eq).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Eq, BinOpId::Eq);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gt(BinOp);
-
-impl TryFrom<&Val> for Gt {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Gt).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Gt, BinOpId::Gt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gte(BinOp);
-
-impl TryFrom<&Val> for Gte {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Gte).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Gte, BinOpId::Gte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lt(BinOp);
-
-impl TryFrom<&Val> for Lt {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Lt).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Lt, BinOpId::Lt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lte(BinOp);
-
-impl TryFrom<&Val> for Lte {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Lte).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Lte, BinOpId::Lte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mul(BinOp);
-
-impl TryFrom<&Val> for Mul {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Mul).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Mul, BinOpId::Mul);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ne(BinOp);
-
-impl TryFrom<&Val> for Ne {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Ne).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Ne, BinOpId::Ne);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sub(BinOp);
-
-impl TryFrom<&Val> for Sub {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Sub).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Sub, BinOpId::Sub);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Or(BinOp);
-
-impl TryFrom<&Val> for Or {
-    type Error = ();
-
-    fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let bin_op = val_to_bin_op(val, BinOpId::Or).map_err(|_| ())?;
-        Ok(Self(bin_op))
-    }
-}
+impl_try_from_val_ref_for!(Or, BinOpId::Or);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinOp {
@@ -209,25 +118,6 @@ pub enum BinOpId {
 }
 
 impl BinOpId {
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "add" => Some(Self::Add),
-            "and" => Some(Self::And),
-            "cmp" => Some(Self::Cmp),
-            "div" => Some(Self::Div),
-            "eq" => Some(Self::Eq),
-            "gt" => Some(Self::Gt),
-            "ge" => Some(Self::Gte),
-            "lt" => Some(Self::Lt),
-            "le" => Some(Self::Lte),
-            "mul" => Some(Self::Mul),
-            "ne" => Some(Self::Ne),
-            "or" => Some(Self::Or),
-            "sub" => Some(Self::Sub),
-            _ => None,
-        }
-    }
-
     fn type_str(&self) -> &str {
         match self {
             Self::Add => "add",
