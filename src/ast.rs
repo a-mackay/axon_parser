@@ -1591,4 +1591,11 @@ mod tests {
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
+
+    #[test]
+    fn old_chart_demo_kwh_works() {
+        let val = &ap_parse(include_str!("../tests/old_chart_demo_kwh.txt")).unwrap();
+        let func: Func = val.try_into().unwrap();
+        println!("{:#?}", func);
+    }
 }
