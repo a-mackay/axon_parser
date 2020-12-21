@@ -5,10 +5,61 @@ use raystack::{Number, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// call
 // and
+// or
 // + - / * <= <=> >= < > = != ==
-// expr
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Or {
+    lhs: Expr,
+    rhs: Expr,
+}
+
+impl Or {
+    pub fn new(lhs: Expr, rhs: Expr) -> Self {
+        Self { lhs, rhs }
+    }
+}
+
+impl TryFrom<&Val> for Or {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "or").map_err(|_| ())?;
+        let lhs = get_val(hash_map, "lhs").expect("or should have 'lhs' tag");
+        let rhs = get_val(hash_map, "rhs").expect("or should have 'rhs' tag");
+
+        let lhs_expr = lhs.try_into().expect("or 'lhs' could not be parsed as an Expr");
+        let rhs_expr = rhs.try_into().expect("or 'lhs' could not be parsed as an Expr");
+        Ok(Self::new(lhs_expr, rhs_expr))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct And {
+    lhs: Expr,
+    rhs: Expr,
+}
+
+impl And {
+    pub fn new(lhs: Expr, rhs: Expr) -> Self {
+        Self { lhs, rhs }
+    }
+}
+
+impl TryFrom<&Val> for And {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "and").map_err(|_| ())?;
+        let lhs = get_val(hash_map, "lhs").expect("and should have 'lhs' tag");
+        let rhs = get_val(hash_map, "rhs").expect("and should have 'rhs' tag");
+
+        let lhs_expr = lhs.try_into().expect("and 'lhs' could not be parsed as an Expr");
+        let rhs_expr = rhs.try_into().expect("and 'lhs' could not be parsed as an Expr");
+        Ok(Self::new(lhs_expr, rhs_expr))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrapCall {
@@ -408,6 +459,7 @@ impl TryFrom<&Val> for List {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    And(Box<And>),
     Assign(Assign),
     Block(Block),
     Call(Call),
@@ -417,6 +469,7 @@ pub enum Expr {
     Id(TagName),
     List(List),
     Lit(Lit),
+    Or(Box<Or>),
     Range(Box<Range>),
     TrapCall(Box<TrapCall>),
 }
@@ -477,6 +530,16 @@ impl TryFrom<&Val> for Expr {
         let trap_call: Option<TrapCall> = val.try_into().ok();
         if let Some(trap_call) = trap_call {
             return Ok(Expr::TrapCall(Box::new(trap_call)))
+        }
+
+        let and: Option<And> = val.try_into().ok();
+        if let Some(and) = and {
+            return Ok(Expr::And(Box::new(and)));
+        }
+
+        let or: Option<Or> = val.try_into().ok();
+        if let Some(or) = or {
+            return Ok(Expr::Or(Box::new(or)));
         }
 
         Err(())
@@ -957,5 +1020,25 @@ mod tests {
         let expected = TrapCall::new(target, key);
         let trap_call: TrapCall = val.try_into().unwrap();
         assert_eq!(trap_call, expected);
+    }
+
+    #[test]
+    fn val_to_and_works() {
+        let val = &ap_parse(r#"{type:"and", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = And::new(lhs, rhs);
+        let and: And = val.try_into().unwrap();
+        assert_eq!(and, expected);
+    }
+
+    #[test]
+    fn val_to_or_works() {
+        let val = &ap_parse(r#"{type:"or", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
+        let lhs = Expr::Id(tn("a"));
+        let rhs = Expr::Id(tn("b"));
+        let expected = Or::new(lhs, rhs);
+        let or: Or = val.try_into().unwrap();
+        assert_eq!(or, expected);
     }
 }
