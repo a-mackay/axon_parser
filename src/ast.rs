@@ -776,7 +776,9 @@ pub enum Expr {
     If(Box<If>),
     List(List),
     Lit(Lit),
+    Neg(Box<Neg>),
     Range(Box<Range>),
+    Throw(Box<Throw>),
     TrapCall(Box<TrapCall>),
     TryCatch(Box<TryCatch>),
 }
@@ -917,6 +919,16 @@ impl TryFrom<&Val> for Expr {
         let func: Option<Func> = val.try_into().ok();
         if let Some(func) = func {
             return Ok(Expr::Func(Box::new(func)));
+        }
+
+        let throw: Option<Throw> = val.try_into().ok();
+        if let Some(throw) = throw {
+            return Ok(Expr::Throw(Box::new(throw)));
+        }
+
+        let neg: Option<Neg> = val.try_into().ok();
+        if let Some(neg) = neg {
+            return Ok(Expr::Neg(Box::new(neg)));
         }
 
         Err(())
