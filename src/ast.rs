@@ -21,7 +21,7 @@ macro_rules! impl_try_from_val_ref_for {
                 Ok(Self(op))
             }
         }
-    }
+    };
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,17 +85,30 @@ pub struct BinOp {
 
 impl BinOp {
     pub fn new(lhs: Expr, bin_op_id: BinOpId, rhs: Expr) -> Self {
-        Self { lhs, bin_op_id, rhs }
+        Self {
+            lhs,
+            bin_op_id,
+            rhs,
+        }
     }
 }
 
-fn val_to_bin_op(val: &Val, bin_op_id: BinOpId) -> Result<BinOp, MapForTypeError> {
+fn val_to_bin_op(
+    val: &Val,
+    bin_op_id: BinOpId,
+) -> Result<BinOp, MapForTypeError> {
     let type_str = bin_op_id.type_str();
     let hash_map = map_for_type(val, type_str)?;
-    let lhs = get_val(hash_map, "lhs").expect("bin op {:?} should have 'lhs' tag");
-    let rhs = get_val(hash_map, "rhs").expect("bin op {:?} should have 'rhs' tag");
-    let lhs_expr = lhs.try_into().unwrap_or_else(|_| panic!("bin op {:?} 'lhs' could not be parsed as an Expr", lhs));
-    let rhs_expr = rhs.try_into().unwrap_or_else(|_| panic!("bin op {:?} 'rhs' could not be parsed as an Expr", rhs));
+    let lhs =
+        get_val(hash_map, "lhs").expect("bin op {:?} should have 'lhs' tag");
+    let rhs =
+        get_val(hash_map, "rhs").expect("bin op {:?} should have 'rhs' tag");
+    let lhs_expr = lhs.try_into().unwrap_or_else(|_| {
+        panic!("bin op {:?} 'lhs' could not be parsed as an Expr", lhs)
+    });
+    let rhs_expr = rhs.try_into().unwrap_or_else(|_| {
+        panic!("bin op {:?} 'rhs' could not be parsed as an Expr", rhs)
+    });
     let bin_op = BinOp::new(lhs_expr, bin_op_id, rhs_expr);
     Ok(bin_op)
 }
@@ -214,7 +227,8 @@ impl Neg {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut lines = self.operand.to_lines(indent);
-        let first_line = lines.first().expect("Neg should contain at least one line");
+        let first_line =
+            lines.first().expect("Neg should contain at least one line");
         let new_str = format!("-{}", first_line.inner_str());
         lines[0] = Line::new(first_line.indent().clone(), new_str);
         lines
@@ -226,8 +240,11 @@ impl TryFrom<&Val> for Neg {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "neg").map_err(|_| ())?;
-        let operand = get_val(hash_map, "operand").expect("neg should have 'operand' tag");
-        let operand_expr = operand.try_into().expect("neg 'operand' could not be parsed as an Expr");
+        let operand = get_val(hash_map, "operand")
+            .expect("neg should have 'operand' tag");
+        let operand_expr = operand
+            .try_into()
+            .expect("neg 'operand' could not be parsed as an Expr");
         Ok(Self::new(operand_expr))
     }
 }
@@ -240,8 +257,16 @@ pub struct TryCatch {
 }
 
 impl TryCatch {
-    pub fn new(try_expr: Expr, exception_name: Option<String>, catch_expr: Expr) -> Self {
-        Self { try_expr, exception_name, catch_expr }
+    pub fn new(
+        try_expr: Expr,
+        exception_name: Option<String>,
+        catch_expr: Expr,
+    ) -> Self {
+        Self {
+            try_expr,
+            exception_name,
+            catch_expr,
+        }
     }
 }
 
@@ -250,16 +275,25 @@ impl TryFrom<&Val> for TryCatch {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "try").map_err(|_| ())?;
-        let try_val = get_val(hash_map, "tryExpr").expect("try should contain 'tryExpr' tag");
-        let catch_val = get_val(hash_map, "catchExpr").expect("try should contain 'catchExpr' tag");
+        let try_val = get_val(hash_map, "tryExpr")
+            .expect("try should contain 'tryExpr' tag");
+        let catch_val = get_val(hash_map, "catchExpr")
+            .expect("try should contain 'catchExpr' tag");
         let exc_name_val = get_val(hash_map, "errVarName");
 
-        let try_expr = try_val.try_into().expect("try 'tryExpr' could not be parsed as an Expr");
-        let catch_expr = catch_val.try_into().expect("try 'catchExpr' could not be parsed as an Expr");
+        let try_expr = try_val
+            .try_into()
+            .expect("try 'tryExpr' could not be parsed as an Expr");
+        let catch_expr = catch_val
+            .try_into()
+            .expect("try 'catchExpr' could not be parsed as an Expr");
         let exc_name = match exc_name_val {
             Some(Val::Lit(ap::Lit::Str(exc_name))) => Some(exc_name.to_owned()),
             None => None,
-            _ => panic!("expected try 'errVarName' to be a string literal: {:?}", val)
+            _ => panic!(
+                "expected try 'errVarName' to be a string literal: {:?}",
+                val
+            ),
         };
 
         Ok(Self::new(try_expr, exc_name, catch_expr))
@@ -275,7 +309,11 @@ pub struct If {
 
 impl If {
     pub fn new(cond: Expr, if_expr: Expr, else_expr: Option<Expr>) -> Self {
-        Self { cond, if_expr, else_expr }
+        Self {
+            cond,
+            if_expr,
+            else_expr,
+        }
     }
 }
 
@@ -284,14 +322,24 @@ impl TryFrom<&Val> for If {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "if").map_err(|_| ())?;
-        let cond_val = get_val(hash_map, "cond").expect("if should contain 'cond' tag");
-        let if_val = get_val(hash_map, "ifExpr").expect("if should contain 'ifExpr' tag");
+        let cond_val =
+            get_val(hash_map, "cond").expect("if should contain 'cond' tag");
+        let if_val = get_val(hash_map, "ifExpr")
+            .expect("if should contain 'ifExpr' tag");
         let else_val = get_val(hash_map, "elseExpr");
 
-        let cond_expr = cond_val.try_into().expect("if 'cond' could not be parsed as an Expr");
-        let if_expr = if_val.try_into().expect("if 'ifExpr' could not be parsed as an Expr");
+        let cond_expr = cond_val
+            .try_into()
+            .expect("if 'cond' could not be parsed as an Expr");
+        let if_expr = if_val
+            .try_into()
+            .expect("if 'ifExpr' could not be parsed as an Expr");
         let else_expr = match else_val {
-            Some(else_val) => Some(else_val.try_into().expect("if 'elseExpr' could not be parsed as an Expr")),
+            Some(else_val) => Some(
+                else_val
+                    .try_into()
+                    .expect("if 'elseExpr' could not be parsed as an Expr"),
+            ),
             None => None,
         };
 
@@ -317,10 +365,13 @@ impl TrapCall {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut lines = self.target.to_lines(indent);
-        let last_line = lines.last().expect("TrapCall target should have at least one line");
+        let last_line = lines
+            .last()
+            .expect("TrapCall target should have at least one line");
         let inner_str = last_line.inner_str();
         let new_inner_str = format!("{}->{}", inner_str, self.key);
-        let new_last_line = Line::new(last_line.indent().clone(), new_inner_str);
+        let new_last_line =
+            Line::new(last_line.indent().clone(), new_inner_str);
         let _ = lines.pop();
         lines.push(new_last_line);
         lines
@@ -332,19 +383,29 @@ impl TryFrom<&Val> for TrapCall {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "trapCall").map_err(|_| ())?;
-        let args = get_vals(hash_map, "args").expect("trapCall should have 'args' tag");
+        let args = get_vals(hash_map, "args")
+            .expect("trapCall should have 'args' tag");
 
-        assert!(args.len() == 2, format!("trapCall 'args' list should have exactly two elements: {:?}", args));
+        assert!(
+            args.len() == 2,
+            format!(
+                "trapCall 'args' list should have exactly two elements: {:?}",
+                args
+            )
+        );
         let target = &args[0];
         let key = &args[1];
-        let target = target.try_into().expect("trapCall 'target' could not be parsed as an Expr");
+        let target = target
+            .try_into()
+            .expect("trapCall 'target' could not be parsed as an Expr");
 
         let key = match key {
             Val::Dict(key_hash_map) => {
-                let key_str = get_literal_str(key_hash_map, "val").expect("trapCall key hash map should contain 'val' tag");
+                let key_str = get_literal_str(key_hash_map, "val")
+                    .expect("trapCall key hash map should contain 'val' tag");
                 key_str.to_owned()
-            },
-            _ => panic!("expected trapCall key Val to be a Dict")
+            }
+            _ => panic!("expected trapCall key Val to be a Dict"),
         };
 
         Ok(Self::new(target, key))
@@ -368,22 +429,30 @@ impl TryFrom<&Val> for DotCall {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "dotCall").map_err(|_| ())?;
-        let target = get_val(hash_map, "target").expect("dotCall should have 'target' tag");
+        let target = get_val(hash_map, "target")
+            .expect("dotCall should have 'target' tag");
         match target {
             Val::Dict(target_hash_map) => {
-                let func_name = get_literal_str(target_hash_map, "name").expect("dotCall 'target' should have 'name' string tag");
+                let func_name = get_literal_str(target_hash_map, "name")
+                    .expect("dotCall 'target' should have 'name' string tag");
                 let func_name = func_name.to_owned();
-                let args = get_vals(hash_map, "args").expect("dotCall should have 'args' tag");
+                let args = get_vals(hash_map, "args")
+                    .expect("dotCall should have 'args' tag");
 
                 let mut exprs = vec![];
 
                 for arg in args {
-                    let expr = arg.try_into().unwrap_or_else(|_| panic!("dotCall arg could not be parsed as an Expr: {:?}", arg));
+                    let expr = arg.try_into().unwrap_or_else(|_| {
+                        panic!(
+                            "dotCall arg could not be parsed as an Expr: {:?}",
+                            arg
+                        )
+                    });
                     exprs.push(expr);
                 }
 
                 Ok(Self::new(func_name, exprs))
-            },
+            }
             _ => panic!("expected dotCall 'target' to be a Dict"),
         }
     }
@@ -420,22 +489,30 @@ impl TryFrom<&Val> for Call {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "call").map_err(|_| ())?;
-        let target = get_val(hash_map, "target").expect("call should have 'target' tag");
+        let target =
+            get_val(hash_map, "target").expect("call should have 'target' tag");
         match target {
             Val::Dict(target_hash_map) => {
-                let func_name = get_literal_str(target_hash_map, "name").expect("call 'target' should have 'name' string tag");
+                let func_name = get_literal_str(target_hash_map, "name")
+                    .expect("call 'target' should have 'name' string tag");
                 let func_name = func_name.to_owned();
-                let args = get_vals(hash_map, "args").expect("call should have 'args' tag");
+                let args = get_vals(hash_map, "args")
+                    .expect("call should have 'args' tag");
 
                 let mut exprs = vec![];
 
                 for arg in args {
-                    let expr = arg.try_into().unwrap_or_else(|_| panic!("call arg could not be parsed as an Expr: {:?}", arg));
+                    let expr = arg.try_into().unwrap_or_else(|_| {
+                        panic!(
+                            "call arg could not be parsed as an Expr: {:?}",
+                            arg
+                        )
+                    });
                     exprs.push(expr);
                 }
 
                 Ok(Self::new(func_name, exprs))
-            },
+            }
             _ => panic!("expected call 'target' to be a Dict"),
         }
     }
@@ -457,8 +534,11 @@ impl TryFrom<&Val> for Not {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "not").map_err(|_| ())?;
-        let operand = get_val(hash_map, "operand").expect("not should have 'operand' tag");
-        let operand_expr = operand.try_into().expect("not 'operand' could not be parsed as an Expr");
+        let operand = get_val(hash_map, "operand")
+            .expect("not should have 'operand' tag");
+        let operand_expr = operand
+            .try_into()
+            .expect("not 'operand' could not be parsed as an Expr");
         Ok(Self::new(operand_expr))
     }
 }
@@ -480,10 +560,16 @@ impl TryFrom<&Val> for Range {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "range").map_err(|_| ())?;
-        let start = get_val(hash_map, "start").expect("range should have 'start' tag");
-        let end = get_val(hash_map, "end").expect("range should have 'end' tag");
-        let start_expr = start.try_into().expect("range 'start' could not be parsed as an Expr");
-        let end_expr = end.try_into().expect("range 'end' could not be parsed as an Expr");
+        let start =
+            get_val(hash_map, "start").expect("range should have 'start' tag");
+        let end =
+            get_val(hash_map, "end").expect("range should have 'end' tag");
+        let start_expr = start
+            .try_into()
+            .expect("range 'start' could not be parsed as an Expr");
+        let end_expr = end
+            .try_into()
+            .expect("range 'end' could not be parsed as an Expr");
         Ok(Self::new(start_expr, end_expr))
     }
 }
@@ -510,16 +596,22 @@ impl TryFrom<&Val> for Func {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "func").map_err(|_| ())?;
-        let param_vals = get_vals(hash_map, "params").expect("func should contain 'params' tag");
+        let param_vals = get_vals(hash_map, "params")
+            .expect("func should contain 'params' tag");
 
         let mut params = vec![];
         for param_val in param_vals {
-            let param = param_val.try_into().expect("func param val could not be converted to a Param");
+            let param = param_val
+                .try_into()
+                .expect("func param val could not be converted to a Param");
             params.push(param);
         }
 
-        let body = get_val(hash_map, "body").expect("func should have a 'body' tag");
-        let body_expr = body.try_into().expect("func body val could not be converted to a Expr");
+        let body =
+            get_val(hash_map, "body").expect("func should have a 'body' tag");
+        let body_expr = body
+            .try_into()
+            .expect("func body val could not be converted to a Expr");
 
         Ok(Self::new(params, body_expr))
     }
@@ -534,9 +626,12 @@ fn zero_indent() -> Indent {
     Indent::new("".to_owned(), 0)
 }
 
-fn exprs_to_line(exprs: &Vec<Expr>, indent: &Indent) -> Line {
+fn exprs_to_line(exprs: &[Expr], indent: &Indent) -> Line {
     let zero_indent = zero_indent();
-    let expr_lines = exprs.iter().map(|expr| expr.to_line(&zero_indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let expr_lines = exprs
+        .iter()
+        .map(|expr| expr.to_line(&zero_indent).inner_str().to_owned())
+        .collect::<Vec<_>>();
     let line_str = expr_lines.join("; ");
     Line::new(indent.clone(), line_str)
 }
@@ -612,13 +707,19 @@ impl Dict {
 
             for (tag_name, expr) in &self.map {
                 let mut dict_val_lines = expr.to_lines(&next_indent);
-                let first_dict_val_line = dict_val_lines.first().expect("dict val should contain at least one line");
+                let first_dict_val_line = dict_val_lines
+                    .first()
+                    .expect("dict val should contain at least one line");
                 let inner_str = first_dict_val_line.inner_str();
                 let new_str = format!("{}: {}", tag_name, inner_str);
-                let new_first_dict_val_line = Line::new(first_dict_val_line.indent().clone(), new_str);
+                let new_first_dict_val_line =
+                    Line::new(first_dict_val_line.indent().clone(), new_str);
                 dict_val_lines[0] = new_first_dict_val_line;
 
-                let mut comma_dict_val_lines = dict_val_lines.into_iter().map(|ln| ln.suffix_str(",")).collect();
+                let mut comma_dict_val_lines = dict_val_lines
+                    .into_iter()
+                    .map(|ln| ln.suffix_str(","))
+                    .collect();
                 lines.append(&mut comma_dict_val_lines);
             }
 
@@ -745,8 +846,12 @@ impl DictVal {
     fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
             Self::Expr(expr) => expr.to_lines(indent),
-            Self::Marker => vec![Line::new(indent.clone(), "marker()".to_owned())],
-            Self::RemoveMarker => vec![Line::new(indent.clone(), "removeMarker()".to_owned())],
+            Self::Marker => {
+                vec![Line::new(indent.clone(), "marker()".to_owned())]
+            }
+            Self::RemoveMarker => {
+                vec![Line::new(indent.clone(), "removeMarker()".to_owned())]
+            }
         }
     }
 }
@@ -768,9 +873,12 @@ impl Throw {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines.first().expect("Throw expr should contain at least one line");
+        let first_expr_line = expr_lines
+            .first()
+            .expect("Throw expr should contain at least one line");
         let new_inner_str = format!("throw {}", first_expr_line.inner_str());
-        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        let new_first_line =
+            Line::new(first_expr_line.indent().clone(), new_inner_str);
         expr_lines[0] = new_first_line;
         expr_lines
     }
@@ -816,7 +924,10 @@ impl List {
 
             for expr in &self.vals {
                 let expr_lines = expr.to_lines(&next_indent);
-                let mut comma_expr_lines = expr_lines.into_iter().map(|ln| ln.suffix_str(",")).collect();
+                let mut comma_expr_lines = expr_lines
+                    .into_iter()
+                    .map(|ln| ln.suffix_str(","))
+                    .collect();
                 lines.append(&mut comma_expr_lines);
             }
 
@@ -901,12 +1012,14 @@ impl Expr {
             Self::Assign(assign) => assign.to_line(indent),
             Self::Block(block) => block.to_line(indent),
             Self::Def(def) => def.to_line(indent),
-            Self::Id(tag_name) => Line::new(indent.clone(), tag_name.clone().into_string()),
+            Self::Id(tag_name) => {
+                Line::new(indent.clone(), tag_name.clone().into_string())
+            }
             Self::List(list) => list.to_line(indent),
             Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
-            Self::TrapCall(trapCall) => trapCall.to_line(indent),
+            Self::TrapCall(trap_call) => trap_call.to_line(indent),
             _ => todo!(),
         }
     }
@@ -917,9 +1030,13 @@ impl Expr {
             Self::Block(block) => block.to_lines(indent),
             Self::Def(def) => def.to_lines(indent),
             Self::Dict(dict) => dict.to_lines(indent),
-            Self::Id(tag_name) => vec![Line::new(indent.clone(), tag_name.clone().into_string())],
+            Self::Id(tag_name) => {
+                vec![Line::new(indent.clone(), tag_name.clone().into_string())]
+            }
             Self::List(list) => list.to_lines(indent),
-            Self::Lit(lit) => vec![Line::new(indent.clone(), lit.to_axon_code())],
+            Self::Lit(lit) => {
+                vec![Line::new(indent.clone(), lit.to_axon_code())]
+            }
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
             Self::TrapCall(trap_call) => trap_call.to_lines(indent),
@@ -988,17 +1105,17 @@ impl TryFrom<&Val> for Expr {
 
         let call: Option<Call> = val.try_into().ok();
         if let Some(call) = call {
-            return Ok(Expr::Call(call))
+            return Ok(Expr::Call(call));
         }
 
         let dot_call: Option<DotCall> = val.try_into().ok();
         if let Some(dot_call) = dot_call {
-            return Ok(Expr::DotCall(dot_call))
+            return Ok(Expr::DotCall(dot_call));
         }
 
         let trap_call: Option<TrapCall> = val.try_into().ok();
         if let Some(trap_call) = trap_call {
-            return Ok(Expr::TrapCall(Box::new(trap_call)))
+            return Ok(Expr::TrapCall(Box::new(trap_call)));
         }
 
         let add: Option<Add> = val.try_into().ok();
@@ -1028,7 +1145,7 @@ impl TryFrom<&Val> for Expr {
 
         let gt: Option<Gt> = val.try_into().ok();
         if let Some(gt) = gt {
-            return Ok(Expr::Gt(Box::new(gt)))
+            return Ok(Expr::Gt(Box::new(gt)));
         }
 
         let gte: Option<Gte> = val.try_into().ok();
@@ -1119,7 +1236,10 @@ pub struct Assign {
 
 impl Assign {
     pub fn new(name: TagName, expr: Expr) -> Self {
-        Self { name, expr: Box::new(expr) }
+        Self {
+            name,
+            expr: Box::new(expr),
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1129,9 +1249,13 @@ impl Assign {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines.first().expect("Assign expr should contain at least one line");
-        let new_inner_str = format!("{} = {}", self.name, first_expr_line.inner_str());
-        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        let first_expr_line = expr_lines
+            .first()
+            .expect("Assign expr should contain at least one line");
+        let new_inner_str =
+            format!("{} = {}", self.name, first_expr_line.inner_str());
+        let new_first_line =
+            Line::new(first_expr_line.indent().clone(), new_inner_str);
         expr_lines[0] = new_first_line;
         expr_lines
     }
@@ -1161,7 +1285,10 @@ pub struct Def {
 
 impl Def {
     pub fn new(name: TagName, expr: Expr) -> Self {
-        Self { name, expr: Box::new(expr) }
+        Self {
+            name,
+            expr: Box::new(expr),
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1171,9 +1298,13 @@ impl Def {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines.first().expect("Def expr should contain at least one line");
-        let new_inner_str = format!("{}: {}", self.name, first_expr_line.inner_str());
-        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        let first_expr_line = expr_lines
+            .first()
+            .expect("Def expr should contain at least one line");
+        let new_inner_str =
+            format!("{}: {}", self.name, first_expr_line.inner_str());
+        let new_first_line =
+            Line::new(first_expr_line.indent().clone(), new_inner_str);
         expr_lines[0] = new_first_line;
         expr_lines
     }
@@ -1591,7 +1722,10 @@ mod tests {
 
     #[test]
     fn val_to_single_expr_block_works() {
-        let val = &ap_parse(r#"{type:"block", exprs:[{type:"literal", val:"hello"}]}"#).unwrap();
+        let val = &ap_parse(
+            r#"{type:"block", exprs:[{type:"literal", val:"hello"}]}"#,
+        )
+        .unwrap();
         let expr = Expr::Lit(lit_str("hello"));
         let exprs = vec![expr];
         let expected = Block::new(exprs);
@@ -1612,7 +1746,8 @@ mod tests {
 
     #[test]
     fn val_to_not_works() {
-        let val = &ap_parse(r#"{type:"not", operand:{type:"literal", val:1}}"#).unwrap();
+        let val = &ap_parse(r#"{type:"not", operand:{type:"literal", val:1}}"#)
+            .unwrap();
         let operand = Expr::Lit(lit_num(1.0));
         let expected = Not::new(operand);
         let not: Not = val.try_into().unwrap();
@@ -1827,7 +1962,8 @@ mod tests {
 
     #[test]
     fn val_to_neg_works() {
-        let val = &ap_parse(r#"{type:"neg", operand:{type:"var", name:"a"}}"#).unwrap();
+        let val = &ap_parse(r#"{type:"neg", operand:{type:"var", name:"a"}}"#)
+            .unwrap();
         let operand = Expr::Id(tn("a"));
         let expected = Neg::new(operand);
         let neg: Neg = val.try_into().unwrap();
@@ -1836,14 +1972,16 @@ mod tests {
 
     #[test]
     fn old_chart_demo_works() {
-        let val = &ap_parse(include_str!("../tests/old_chart_demo.txt")).unwrap();
+        let val =
+            &ap_parse(include_str!("../tests/old_chart_demo.txt")).unwrap();
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
 
     #[test]
     fn old_chart_demo_kwh_works() {
-        let val = &ap_parse(include_str!("../tests/old_chart_demo_kwh.txt")).unwrap();
+        let val =
+            &ap_parse(include_str!("../tests/old_chart_demo_kwh.txt")).unwrap();
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
