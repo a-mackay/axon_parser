@@ -660,6 +660,15 @@ impl Throw {
     pub fn new(expr: Expr) -> Self {
         Self { expr }
     }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut expr_lines = self.expr.to_lines(&indent);
+        let first_expr_line = expr_lines.first().expect("Throw expr should contain at least one line");
+        let new_inner_str = format!("throw {}", first_expr_line.inner_str());
+        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        expr_lines[0] = new_first_line;
+        expr_lines
+    }
 }
 
 impl TryFrom<&Val> for Throw {
@@ -778,9 +787,11 @@ impl Expr {
             Self::Assign(assign) => assign.to_lines(indent),
             Self::Block(block) => block.to_lines(indent),
             Self::Def(def) => def.to_lines(indent),
+            Self::Id(tag_name) => vec![Line::new(indent.clone(), tag_name.clone().into_string())],
             Self::List(list) => list.to_lines(indent),
             Self::Lit(lit) => vec![Line::new(indent.clone(), lit.to_axon_code())],
             Self::Neg(neg) => neg.to_lines(indent),
+            Self::Throw(throw) => throw.to_lines(indent),
             _ => todo!(),
         }
     }
