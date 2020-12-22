@@ -736,7 +736,15 @@ impl Dict {
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        todo!()
+        let zero_indent = zero_indent();
+        let mut entries = vec![];
+        for (tag_name, dict_val) in self.map.iter() {
+            let line = dict_val.to_line(&zero_indent);
+            let entry = format!("{}: {}", tag_name, line.inner_str());
+            entries.push(entry);
+        }
+        let entries_str = entries.join(", ");
+        Line::new(indent.clone(), format!("{{{}}}", entries_str))
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -887,6 +895,15 @@ pub enum DictVal {
 }
 
 impl DictVal {
+    fn to_line(&self, indent: &Indent) -> Line {
+        // TODO should this be renamed to to_axon_code?
+        match self {
+            Self::Expr(expr) => expr.to_line(indent),
+            Self::Marker => Line::new(indent.clone(), "marker()".to_owned()),
+            Self::RemoveMarker => Line::new(indent.clone(), "removeMarker()".to_owned()),
+        }
+    }
+
     fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
             Self::Expr(expr) => expr.to_lines(indent),
@@ -953,7 +970,8 @@ impl List {
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        todo!()
+        let line = exprs_to_line(&self.vals, indent);
+        line.prefix_str("[").suffix_str("]")
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
