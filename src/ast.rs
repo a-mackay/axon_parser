@@ -536,6 +536,31 @@ impl Dict {
     pub fn new(map: HashMap<TagName, DictVal>) -> Self {
         Self { map }
     }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        if self.map.is_empty() {
+            vec![Line::new(indent.clone(), "{}".to_owned())]
+        } else {
+            let open_brace = Line::new(indent.clone(), "{".to_owned());
+            let close_brace = Line::new(indent.clone(), "}".to_owned());
+            let mut lines = vec![open_brace];
+
+            let next_indent = indent.increase();
+
+            for (tag_name, expr) in &self.map {
+                let mut dict_val_lines = expr.to_lines(&next_indent);
+                let first_dict_val_line = dict_val_lines.first().expect("dict val should contain at least one line");
+                let inner_str = first_dict_val_line.inner_str();
+                let new_str = format!("{}: {}", tag_name, inner_str);
+                let new_first_dict_val_line = Line::new(first_dict_val_line.indent().clone(), new_str);
+                dict_val_lines[0] = new_first_dict_val_line;
+                lines.append(&mut dict_val_lines);
+            }
+
+            lines.push(close_brace);
+            lines
+        }
+    }
 }
 
 impl TryFrom<&Val> for Dict {
@@ -651,6 +676,16 @@ pub enum DictVal {
     RemoveMarker,
 }
 
+impl DictVal {
+    fn to_lines(&self, indent: &Indent) -> Lines {
+        match self {
+            Self::Expr(expr) => expr.to_lines(indent),
+            Self::Marker => vec![Line::new(indent.clone(), "marker()".to_owned())],
+            Self::RemoveMarker => vec![Line::new(indent.clone(), "removeMarker()".to_owned())],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Throw {
     expr: Expr,
@@ -696,19 +731,23 @@ impl List {
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let open_brace = Line::new(indent.clone(), "[".to_owned());
-        let close_brace = Line::new(indent.clone(), "]".to_owned());
-        let mut lines = vec![open_brace];
+        if self.vals.is_empty() {
+            vec![Line::new(indent.clone(), "[]".to_owned())]
+        } else {
+            let open_brace = Line::new(indent.clone(), "[".to_owned());
+            let close_brace = Line::new(indent.clone(), "]".to_owned());
+            let mut lines = vec![open_brace];
 
-        let next_indent = indent.increase();
+            let next_indent = indent.increase();
 
-        for expr in &self.vals {
-            let mut expr_lines = expr.to_lines(&next_indent);
-            lines.append(&mut expr_lines);
+            for expr in &self.vals {
+                let mut expr_lines = expr.to_lines(&next_indent);
+                lines.append(&mut expr_lines);
+            }
+
+            lines.push(close_brace);
+            lines
         }
-
-        lines.push(close_brace);
-        lines
     }
 }
 
@@ -1743,6 +1782,13 @@ mod format_tests {
     }
 
     #[test]
+    fn empty_list_works() {
+        let list = List::new(vec![]);
+        let lines = stringify(&list.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "[]");
+    }
+
+    #[test]
     fn list_works() {
         let item1 = lit_num_expr(1.0);
         let item2 = lit_num_expr(2.0);
@@ -1754,6 +1800,32 @@ mod format_tests {
         assert_eq!(lines[2], "    2");
         assert_eq!(lines[3], "    3");
         assert_eq!(lines[4], "]");
+    }
+
+    #[test]
+    fn empty_dict_works() {
+        let dict = Dict::new(HashMap::new());
+        let lines = stringify(&dict.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "{}");
+    }
+
+    #[test]
+    fn dict_works() {
+        let item1 = DictVal::Expr(lit_num_expr(1.0));
+        let item2 = DictVal::Marker;
+        let item3 = DictVal::RemoveMarker;
+        let mut hash_map = HashMap::new();
+        hash_map.insert(tn("a"), item1);
+        hash_map.insert(tn("b"), item2);
+        hash_map.insert(tn("c"), item3);
+        let dict = Dict::new(hash_map);
+        let lines = stringify(&dict.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "{");
+        assert!(lines.contains(&"    a: 1".to_owned()));
+        assert!(lines.contains(&"    b: marker()".to_owned()));
+        assert!(lines.contains(&"    c: removeMarker()".to_owned()));
+        assert_eq!(lines[4], "}");
+        assert_eq!(lines.len(), 5);
     }
 
     #[test]
