@@ -155,6 +155,34 @@ impl BinOpId {
     }
 }
 
+pub type Lines = Vec<Line>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Line {
+    indent: Indent,
+    line: String,
+}
+
+impl Line {
+    pub fn new(indent: Indent, line: String) -> Self {
+        Self { indent, line }
+    }
+
+    pub fn inner_str(&self) -> &str {
+        &self.line
+    }
+
+    pub fn indent(&self) -> &Indent {
+        &self.indent
+    }
+}
+
+impl std::fmt::Display for Line {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.indent, self.line)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Neg {
     operand: Expr,
@@ -163,6 +191,14 @@ pub struct Neg {
 impl Neg {
     pub fn new(operand: Expr) -> Neg {
         Self { operand }
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut lines = self.operand.to_lines(indent);
+        let first_line = lines.first().expect("Neg should contain at least one line");
+        let new_str = format!("-{}", first_line.inner_str());
+        lines[0] = Line::new(first_line.indent().clone(), new_str);
+        lines
     }
 }
 
@@ -628,21 +664,20 @@ impl List {
         Self { vals }
     }
 
-    pub fn to_indented_code(&self, indent: &Indent) -> String {
-        let open_brace = format!("{}[", indent);
-        let close_brace = format!("{}]", indent);
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let open_brace = Line::new(indent.clone(), "[".to_owned());
+        let close_brace = Line::new(indent.clone(), "]".to_owned());
         let mut lines = vec![open_brace];
 
         let next_indent = indent.increase();
 
         for expr in &self.vals {
-            let line = expr.to_indented_code(&next_indent);
-            lines.push(line);
+            let mut expr_lines = expr.to_lines(&next_indent);
+            lines.append(&mut expr_lines);
         }
 
         lines.push(close_brace);
-        let code = lines.join("\n");
-        code
+        lines
     }
 }
 
@@ -716,10 +751,11 @@ impl Expr {
         matches!(self, Self::Block(_))
     }
 
-    pub fn to_indented_code(&self, indent: &Indent) -> String {
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
-            Self::List(list) => list.to_indented_code(indent),
-            Self::Lit(lit) => format!("{}{}", indent, lit.to_axon_code()),
+            Self::List(list) => list.to_lines(indent),
+            Self::Lit(lit) => vec![Line::new(indent.clone(), lit.to_axon_code())],
+            Self::Neg(neg) => neg.to_lines(indent),
             _ => todo!(),
         }
     }
@@ -1622,11 +1658,43 @@ mod tests {
 mod format_tests {
     use super::*;
 
+    const INDENT: &str = "    ";
+
+    fn zero_ind() -> Indent {
+        Indent::new(INDENT.to_owned(), 0)
+    }
+
+    fn lit_num_expr(n: f64) -> Expr {
+        Expr::Lit(lit_num(n))
+    }
+
+    fn lit_num(n: f64) -> Lit {
+        Lit::Num(Number::new(n, None))
+    }
+
+    fn stringify(lines: &Lines) -> Vec<String> {
+        lines.iter().map(|ln| format!("{}", ln)).collect()
+    }
+
     #[test]
     fn year_month_works() {
         let ym = YearMonth::new(2020, Month::Jan);
         assert_eq!(ym.to_axon_code(), "2020-01");
         let ym = YearMonth::new(2020, Month::Dec);
         assert_eq!(ym.to_axon_code(), "2020-12");
+    }
+
+    #[test]
+    fn list_works() {
+        let item1 = lit_num_expr(1.0);
+        let item2 = lit_num_expr(2.0);
+        let item3 = lit_num_expr(3.0);
+        let list = List::new(vec![item1, item2, item3]);
+        let lines = stringify(&list.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "[");
+        assert_eq!(lines[1], "    1");
+        assert_eq!(lines[2], "    2");
+        assert_eq!(lines[3], "    3");
+        assert_eq!(lines[4], "]");
     }
 }
