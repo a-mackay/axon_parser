@@ -175,6 +175,12 @@ impl Line {
     pub fn indent(&self) -> &Indent {
         &self.indent
     }
+
+    /// The number of characters in this line, including indentation.
+    pub fn len(&self) -> usize {
+        let code = format!("{}", self);
+        code.chars().count()
+    }
 }
 
 impl std::fmt::Display for Line {
@@ -485,6 +491,22 @@ impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
         Self { exprs }
     }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let open_brace = Line::new(indent.clone(), "do".to_owned());
+        let close_brace = Line::new(indent.clone(), "end".to_owned());
+        let mut lines = vec![open_brace];
+
+        let next_indent = indent.increase();
+
+        for expr in &self.exprs {
+            let mut expr_lines = expr.to_lines(&next_indent);
+            lines.append(&mut expr_lines);
+        }
+
+        lines.push(close_brace);
+        lines
+    }
 }
 
 impl TryFrom<&Val> for Block {
@@ -753,6 +775,9 @@ impl Expr {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
+            Self::Assign(assign) => assign.to_lines(indent),
+            Self::Block(block) => block.to_lines(indent),
+            Self::Def(def) => def.to_lines(indent),
             Self::List(list) => list.to_lines(indent),
             Self::Lit(lit) => vec![Line::new(indent.clone(), lit.to_axon_code())],
             Self::Neg(neg) => neg.to_lines(indent),
@@ -954,6 +979,15 @@ impl Assign {
     pub fn new(name: TagName, expr: Expr) -> Self {
         Self { name, expr: Box::new(expr) }
     }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut expr_lines = self.expr.to_lines(&indent);
+        let first_expr_line = expr_lines.first().expect("Assign expr should contain at least one line");
+        let new_inner_str = format!("{} = {}", self.name, first_expr_line.inner_str());
+        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        expr_lines[0] = new_first_line;
+        expr_lines
+    }
 }
 
 impl TryFrom<&Val> for Assign {
@@ -981,6 +1015,15 @@ pub struct Def {
 impl Def {
     pub fn new(name: TagName, expr: Expr) -> Self {
         Self { name, expr: Box::new(expr) }
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut expr_lines = self.expr.to_lines(&indent);
+        let first_expr_line = expr_lines.first().expect("Def expr should contain at least one line");
+        let new_inner_str = format!("{}: {}", self.name, first_expr_line.inner_str());
+        let new_first_line = Line::new(first_expr_line.indent().clone(), new_inner_str);
+        expr_lines[0] = new_first_line;
+        expr_lines
     }
 }
 
@@ -1660,6 +1703,10 @@ mod format_tests {
 
     const INDENT: &str = "    ";
 
+    fn tn(s: &str) -> TagName {
+        TagName::new(s.to_owned()).expect("s is not a valid tagName")
+    }
+
     fn zero_ind() -> Indent {
         Indent::new(INDENT.to_owned(), 0)
     }
@@ -1696,5 +1743,45 @@ mod format_tests {
         assert_eq!(lines[2], "    2");
         assert_eq!(lines[3], "    3");
         assert_eq!(lines[4], "]");
+    }
+
+    #[test]
+    fn single_line_def_works() {
+        let expr = lit_num_expr(1.0);
+        let def = Def::new(tn("varName"), expr);
+        let lines = stringify(&def.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "varName: 1");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn single_line_assign_works() {
+        let expr = lit_num_expr(1.0);
+        let assign = Assign::new(tn("varName"), expr);
+        let lines = stringify(&assign.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "varName = 1");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn multi_line_assign_works() {
+        let expr = Expr::Block(Block::new(vec![lit_num_expr(1.0)]));
+        let assign = Assign::new(tn("varName"), expr);
+        let lines = stringify(&assign.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "varName = do");
+        assert_eq!(lines[1], "    1");
+        assert_eq!(lines[2], "end");
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn multi_line_def_works() {
+        let expr = Expr::Block(Block::new(vec![lit_num_expr(1.0)]));
+        let def = Def::new(tn("varName"), expr);
+        let lines = stringify(&def.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "varName: do");
+        assert_eq!(lines[1], "    1");
+        assert_eq!(lines[2], "end");
+        assert_eq!(lines.len(), 3);
     }
 }
