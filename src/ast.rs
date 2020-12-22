@@ -422,6 +422,22 @@ impl DotCall {
     pub fn new(func_name: String, args: Vec<Expr>) -> Self {
         Self { func_name, args }
     }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let first_arg = self.args.first().expect("DotCall should have at least one argument");
+        let line = first_arg.to_line(indent);
+        let zero_indent = zero_indent();
+        let trailing_args = &self.args[1..];
+        let trailing_line = arg_exprs_to_line(trailing_args, &zero_indent);
+        let trailing_args_str = trailing_line.inner_str();
+        line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        // TODO handle multi line calls
+        let line = self.to_line(indent);
+        vec![line]
+    }
 }
 
 impl TryFrom<&Val> for DotCall {
@@ -464,24 +480,28 @@ pub struct Call {
     args: Vec<Expr>,
 }
 
+/// Converts expressions, which represent arguments to a function, into a Line.
+fn arg_exprs_to_line(args: &[Expr], indent: &Indent) -> Line {
+    let line_strs = args.iter().map(|arg| arg.to_line(indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let line_str = line_strs.join(", ");
+    Line::new(indent.clone(), line_str)
+}
+
 impl Call {
     pub fn new(func_name: String, args: Vec<Expr>) -> Self {
         Self { func_name, args }
     }
 
-    //test(a, b)
-    //test(do
-    //     5
-    //end, {
-    //     marker: yes
-    //})
-    //test() () => ...
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let args_line = arg_exprs_to_line(&self.args, indent);
+        args_line.prefix_str(&format!("{}(", self.func_name)).suffix_str(")")
+    }
 
-    // pub fn to_lines(&self, indent: &Indent) -> Lines {
-    //     let args = self.args.iter().map(|arg| arg.to)
-    //     let s = format!("{}()")
-    //     let line = Line::new(indent.clone())
-    // }
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        // TODO handle multi line calls
+        let line = self.to_line(indent);
+        vec![line]
+    }
 }
 
 impl TryFrom<&Val> for Call {
@@ -583,6 +603,30 @@ pub struct Func {
 impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
         Self { params, body }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let func = self.clone();
+        let func = func.blockify();
+        let line = params_to_line(&func.params, indent);
+        let zero_indent = zero_indent();
+        let body_line = func.body.to_line(&zero_indent);
+        let body_str = body_line.inner_str();
+        line.prefix_str("(").suffix_str(&format!(") => {}", body_str))
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let func = self.clone();
+        let func = func.blockify();
+        let zero_indent = zero_indent();
+        let params_line = params_to_line(&func.params, &zero_indent);
+        let params_str = params_line.inner_str();
+
+        let mut body_lines = func.body.to_lines(indent);
+        let first_body_line = body_lines.first().expect("Func body should have at least one line");
+        let new_first_body_line = first_body_line.prefix_str(&format!("({}) => ", params_str));
+        body_lines[0] = new_first_body_line;
+        body_lines
     }
 
     pub fn blockify(mut self) -> Self {
@@ -1011,7 +1055,10 @@ impl Expr {
         match self {
             Self::Assign(assign) => assign.to_line(indent),
             Self::Block(block) => block.to_line(indent),
+            Self::Call(call) => call.to_line(indent),
             Self::Def(def) => def.to_line(indent),
+            Self::Dict(dict) => dict.to_line(indent),
+            Self::DotCall(dot_call) => dot_call.to_line(indent),
             Self::Id(tag_name) => {
                 Line::new(indent.clone(), tag_name.clone().into_string())
             }
@@ -1028,7 +1075,10 @@ impl Expr {
         match self {
             Self::Assign(assign) => assign.to_lines(indent),
             Self::Block(block) => block.to_lines(indent),
+            Self::Call(call) => call.to_lines(indent),
             Self::Def(def) => def.to_lines(indent),
+            Self::Dict(dict) => dict.to_lines(indent),
+            Self::DotCall(dot_call) => dot_call.to_lines(indent),
             Self::Dict(dict) => dict.to_lines(indent),
             Self::Id(tag_name) => {
                 vec![Line::new(indent.clone(), tag_name.clone().into_string())]
@@ -1324,6 +1374,12 @@ impl TryFrom<&Val> for Def {
     }
 }
 
+fn params_to_line(params: &[Param], indent: &Indent) -> Line {
+    let lines = params.iter().map(|param| param.to_line(indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let line_str = lines.join(", ");
+    Line::new(indent.clone(), line_str)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Param {
     pub name: TagName,
@@ -1333,6 +1389,24 @@ pub struct Param {
 impl Param {
     pub fn new(name: TagName, default: Option<Expr>) -> Self {
         Self { name, default }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        match &self.default {
+            Some(default) => {
+                let zero_indent = zero_indent();
+                let default_line = default.to_line(&zero_indent);
+                let default_str = default_line.inner_str();
+                Line::new(indent.clone(), format!("{}: {}", self.name, default_str))
+            }
+            None => Line::new(indent.clone(), self.name.clone().into_string())
+        }
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        // TODO handle multi line params
+        let line = self.to_line(indent);
+        vec![line]
     }
 }
 
@@ -1989,6 +2063,7 @@ mod tests {
 
 #[cfg(test)]
 mod format_tests {
+    use axon_parseast_parser::parse as ap_parse;
     use super::*;
 
     const INDENT: &str = "    ";
@@ -2130,5 +2205,15 @@ mod format_tests {
         assert_eq!(lines[1], "    a: 1,");
         assert_eq!(lines[2], "}->varName");
         assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn func_works() {
+        let val = &ap_parse(r#"{type:"func", params:[], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"test2"}, args:[{type:"call", target:{type:"var", name:"test"}, args:[{type:"literal", val:1}, {type:"literal", val:2}, {type:"dict", names:["var1", "var2"], vals:[{type:"literal", val}, {type:"literal", val:"isVar2"}]}]}]}, {type:"def", name:"dict", val:{type:"call", target:{type:"var", name:"someDict"}, args:[]}}, {type:"assign", lhs:{type:"var", name:"dict"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"dict"}, {type:"literal", val:"tagName"}]}}]}}"#).unwrap();
+        let func: Func = val.try_into().unwrap();
+        let strings = stringify(&func.to_lines(&zero_ind()));
+        for s in strings {
+            println!("{}", s);
+        }
     }
 }
