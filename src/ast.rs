@@ -296,6 +296,17 @@ impl TrapCall {
     pub fn new(target: Expr, key: String) -> Self {
         Self { target, key }
     }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut lines = self.target.to_lines(indent);
+        let last_line = lines.last().expect("TrapCall target should have at least one line");
+        let inner_str = last_line.inner_str();
+        let new_inner_str = format!("{}->{}", inner_str, self.key);
+        let new_last_line = Line::new(last_line.indent().clone(), new_inner_str);
+        let _ = lines.pop();
+        lines.push(new_last_line);
+        lines
+    }
 }
 
 impl TryFrom<&Val> for TrapCall {
@@ -826,11 +837,13 @@ impl Expr {
             Self::Assign(assign) => assign.to_lines(indent),
             Self::Block(block) => block.to_lines(indent),
             Self::Def(def) => def.to_lines(indent),
+            Self::Dict(dict) => dict.to_lines(indent),
             Self::Id(tag_name) => vec![Line::new(indent.clone(), tag_name.clone().into_string())],
             Self::List(list) => list.to_lines(indent),
             Self::Lit(lit) => vec![Line::new(indent.clone(), lit.to_axon_code())],
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
+            Self::TrapCall(trap_call) => trap_call.to_lines(indent),
             _ => todo!(),
         }
     }
@@ -1865,6 +1878,30 @@ mod format_tests {
         assert_eq!(lines[0], "varName: do");
         assert_eq!(lines[1], "    1");
         assert_eq!(lines[2], "end");
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn single_line_trap_call_works() {
+        let expr = lit_num_expr(1.0);
+        let trap = TrapCall::new(expr, "varName".to_owned());
+        let lines = stringify(&trap.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "1->varName");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn multi_line_trap_call_works() {
+        let item1 = DictVal::Expr(lit_num_expr(1.0));
+        let mut hash_map = HashMap::new();
+        hash_map.insert(tn("a"), item1);
+        let dict = Dict::new(hash_map);
+
+        let trap = TrapCall::new(Expr::Dict(dict), "varName".to_owned());
+        let lines = stringify(&trap.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "{");
+        assert_eq!(lines[1], "    a: 1");
+        assert_eq!(lines[2], "}->varName");
         assert_eq!(lines.len(), 3);
     }
 }
