@@ -176,6 +176,14 @@ impl Line {
         &self.indent
     }
 
+    pub fn prefix_str(&self, prefix: &str) -> Self {
+        Self::new(self.indent.clone(), format!("{}{}", prefix, self.line))
+    }
+
+    pub fn suffix_str(&self, suffix: &str) -> Self {
+        Self::new(self.indent.clone(), format!("{}{}", self.line, suffix))
+    }
+
     /// The number of characters in this line, including indentation.
     pub fn len(&self) -> usize {
         let code = format!("{}", self);
@@ -197,6 +205,11 @@ pub struct Neg {
 impl Neg {
     pub fn new(operand: Expr) -> Neg {
         Self { operand }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let s = self.operand.to_line(indent);
+        s.prefix_str("-")
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -297,6 +310,11 @@ impl TrapCall {
         Self { target, key }
     }
 
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.target.to_line(indent);
+        line.suffix_str(&format!("->{}", self.key))
+    }
+
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut lines = self.target.to_lines(indent);
         let last_line = lines.last().expect("TrapCall target should have at least one line");
@@ -381,6 +399,20 @@ impl Call {
     pub fn new(func_name: String, args: Vec<Expr>) -> Self {
         Self { func_name, args }
     }
+
+    //test(a, b)
+    //test(do
+    //     5
+    //end, {
+    //     marker: yes
+    //})
+    //test() () => ...
+
+    // pub fn to_lines(&self, indent: &Indent) -> Lines {
+    //     let args = self.args.iter().map(|arg| arg.to)
+    //     let s = format!("{}()")
+    //     let line = Line::new(indent.clone())
+    // }
 }
 
 impl TryFrom<&Val> for Call {
@@ -498,9 +530,25 @@ pub struct Block {
     exprs: Vec<Expr>,
 }
 
+fn zero_indent() -> Indent {
+    Indent::new("".to_owned(), 0)
+}
+
+fn exprs_to_line(exprs: &Vec<Expr>, indent: &Indent) -> Line {
+    let zero_indent = zero_indent();
+    let expr_lines = exprs.iter().map(|expr| expr.to_line(&zero_indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let line_str = expr_lines.join("; ");
+    Line::new(indent.clone(), line_str)
+}
+
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
         Self { exprs }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = exprs_to_line(&self.exprs, indent);
+        line.prefix_str("do ").suffix_str(" end")
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -548,6 +596,10 @@ impl Dict {
         Self { map }
     }
 
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        todo!()
+    }
+
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         if self.map.is_empty() {
             vec![Line::new(indent.clone(), "{}".to_owned())]
@@ -565,7 +617,9 @@ impl Dict {
                 let new_str = format!("{}: {}", tag_name, inner_str);
                 let new_first_dict_val_line = Line::new(first_dict_val_line.indent().clone(), new_str);
                 dict_val_lines[0] = new_first_dict_val_line;
-                lines.append(&mut dict_val_lines);
+
+                let mut comma_dict_val_lines = dict_val_lines.into_iter().map(|ln| ln.suffix_str(",")).collect();
+                lines.append(&mut comma_dict_val_lines);
             }
 
             lines.push(close_brace);
@@ -707,6 +761,11 @@ impl Throw {
         Self { expr }
     }
 
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.expr.to_line(indent);
+        line.prefix_str("throw ")
+    }
+
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut expr_lines = self.expr.to_lines(&indent);
         let first_expr_line = expr_lines.first().expect("Throw expr should contain at least one line");
@@ -741,6 +800,10 @@ impl List {
         Self { vals }
     }
 
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        todo!()
+    }
+
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         if self.vals.is_empty() {
             vec![Line::new(indent.clone(), "[]".to_owned())]
@@ -752,8 +815,9 @@ impl List {
             let next_indent = indent.increase();
 
             for expr in &self.vals {
-                let mut expr_lines = expr.to_lines(&next_indent);
-                lines.append(&mut expr_lines);
+                let expr_lines = expr.to_lines(&next_indent);
+                let mut comma_expr_lines = expr_lines.into_iter().map(|ln| ln.suffix_str(",")).collect();
+                lines.append(&mut comma_expr_lines);
             }
 
             lines.push(close_brace);
@@ -830,6 +894,21 @@ impl Indent {
 impl Expr {
     pub fn is_block(&self) -> bool {
         matches!(self, Self::Block(_))
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        match self {
+            Self::Assign(assign) => assign.to_line(indent),
+            Self::Block(block) => block.to_line(indent),
+            Self::Def(def) => def.to_line(indent),
+            Self::Id(tag_name) => Line::new(indent.clone(), tag_name.clone().into_string()),
+            Self::List(list) => list.to_line(indent),
+            Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
+            Self::Neg(neg) => neg.to_line(indent),
+            Self::Throw(throw) => throw.to_line(indent),
+            Self::TrapCall(trapCall) => trapCall.to_line(indent),
+            _ => todo!(),
+        }
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -1043,6 +1122,11 @@ impl Assign {
         Self { name, expr: Box::new(expr) }
     }
 
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.expr.to_line(indent);
+        line.prefix_str(&format!("{} = ", self.name))
+    }
+
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut expr_lines = self.expr.to_lines(&indent);
         let first_expr_line = expr_lines.first().expect("Assign expr should contain at least one line");
@@ -1078,6 +1162,11 @@ pub struct Def {
 impl Def {
     pub fn new(name: TagName, expr: Expr) -> Self {
         Self { name, expr: Box::new(expr) }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.expr.to_line(indent);
+        line.prefix_str(&format!("{}: ", self.name))
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -1809,9 +1898,9 @@ mod format_tests {
         let list = List::new(vec![item1, item2, item3]);
         let lines = stringify(&list.to_lines(&zero_ind()));
         assert_eq!(lines[0], "[");
-        assert_eq!(lines[1], "    1");
-        assert_eq!(lines[2], "    2");
-        assert_eq!(lines[3], "    3");
+        assert_eq!(lines[1], "    1,");
+        assert_eq!(lines[2], "    2,");
+        assert_eq!(lines[3], "    3,");
         assert_eq!(lines[4], "]");
     }
 
@@ -1834,9 +1923,9 @@ mod format_tests {
         let dict = Dict::new(hash_map);
         let lines = stringify(&dict.to_lines(&zero_ind()));
         assert_eq!(lines[0], "{");
-        assert!(lines.contains(&"    a: 1".to_owned()));
-        assert!(lines.contains(&"    b: marker()".to_owned()));
-        assert!(lines.contains(&"    c: removeMarker()".to_owned()));
+        assert!(lines.contains(&"    a: 1,".to_owned()));
+        assert!(lines.contains(&"    b: marker(),".to_owned()));
+        assert!(lines.contains(&"    c: removeMarker(),".to_owned()));
         assert_eq!(lines[4], "}");
         assert_eq!(lines.len(), 5);
     }
@@ -1900,7 +1989,7 @@ mod format_tests {
         let trap = TrapCall::new(Expr::Dict(dict), "varName".to_owned());
         let lines = stringify(&trap.to_lines(&zero_ind()));
         assert_eq!(lines[0], "{");
-        assert_eq!(lines[1], "    a: 1");
+        assert_eq!(lines[1], "    a: 1,");
         assert_eq!(lines[2], "}->varName");
         assert_eq!(lines.len(), 3);
     }
