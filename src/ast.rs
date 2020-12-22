@@ -24,57 +24,92 @@ macro_rules! impl_try_from_val_ref_for {
     };
 }
 
+macro_rules! impl_line_and_lines_for {
+    ($type_name:ty, $bin_op:expr) => {
+        impl $type_name {
+            fn to_line(&self, indent: &Indent) -> Line {
+                let bin_op = &self.0;
+                let zero_indent = zero_indent();
+                let left_line = bin_op.lhs.to_line(&zero_indent);
+                let right_line = bin_op.rhs.to_line(&zero_indent);
+                let left_str = left_line.inner_str();
+                let right_str = right_line.inner_str();
+                let op_symbol = $bin_op.to_symbol();
+                Line::new(indent.clone(), format!("{} {} {}", left_str, op_symbol, right_str))
+            }
+
+            fn to_lines(&self, indent: &Indent) -> Lines {
+                let line = self.to_line(indent);
+                vec![line]
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Add(BinOp);
 impl_try_from_val_ref_for!(Add, BinOpId::Add);
+impl_line_and_lines_for!(Add, BinOpId::Add);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct And(BinOp);
 impl_try_from_val_ref_for!(And, BinOpId::And);
+impl_line_and_lines_for!(And, BinOpId::And);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cmp(BinOp);
 impl_try_from_val_ref_for!(Cmp, BinOpId::Cmp);
+impl_line_and_lines_for!(Cmp, BinOpId::Cmp);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Div(BinOp);
 impl_try_from_val_ref_for!(Div, BinOpId::Div);
+impl_line_and_lines_for!(Div, BinOpId::Div);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Eq(BinOp);
 impl_try_from_val_ref_for!(Eq, BinOpId::Eq);
+impl_line_and_lines_for!(Eq, BinOpId::Eq);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gt(BinOp);
 impl_try_from_val_ref_for!(Gt, BinOpId::Gt);
+impl_line_and_lines_for!(Gt, BinOpId::Gt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gte(BinOp);
 impl_try_from_val_ref_for!(Gte, BinOpId::Gte);
+impl_line_and_lines_for!(Gte, BinOpId::Gte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lt(BinOp);
 impl_try_from_val_ref_for!(Lt, BinOpId::Lt);
+impl_line_and_lines_for!(Lt, BinOpId::Lt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lte(BinOp);
 impl_try_from_val_ref_for!(Lte, BinOpId::Lte);
+impl_line_and_lines_for!(Lte, BinOpId::Lte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mul(BinOp);
 impl_try_from_val_ref_for!(Mul, BinOpId::Mul);
+impl_line_and_lines_for!(Mul, BinOpId::Mul);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ne(BinOp);
 impl_try_from_val_ref_for!(Ne, BinOpId::Ne);
+impl_line_and_lines_for!(Ne, BinOpId::Ne);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sub(BinOp);
 impl_try_from_val_ref_for!(Sub, BinOpId::Sub);
+impl_line_and_lines_for!(Sub, BinOpId::Sub);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Or(BinOp);
 impl_try_from_val_ref_for!(Or, BinOpId::Or);
+impl_line_and_lines_for!(Or, BinOpId::Or);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinOp {
@@ -165,6 +200,30 @@ impl BinOpId {
             Self::Or => "or",
             Self::Sub => "-",
         }
+    }
+
+    /// Returns an int representing how high the operator's precendence is,
+    /// where 1 is the highest precedence.
+    fn to_order_int(&self) -> u8 {
+        match self {
+            Self::Add => 2,
+            Self::And => 5,
+            Self::Cmp => 4,
+            Self::Div => 1,
+            Self::Eq => 3,
+            Self::Gt => 4,
+            Self::Gte => 4,
+            Self::Lt => 4,
+            Self::Lte => 4,
+            Self::Mul => 1,
+            Self::Ne => 3,
+            Self::Or => 6,
+            Self::Sub => 2,
+        }
+    }
+
+    fn compare_precedence(&self, other: &BinOpId) -> std::cmp::Ordering {
+        self.to_order_int().cmp(&other.to_order_int())
     }
 }
 
@@ -1071,6 +1130,19 @@ impl Expr {
 
     pub fn to_line(&self, indent: &Indent) -> Line {
         match self {
+            Self::Add(add) => add.to_line(indent),
+            Self::And(and) => and.to_line(indent),
+            Self::Cmp(cmp) => cmp.to_line(indent),
+            Self::Div(div) => div.to_line(indent),
+            Self::Eq(eq) => eq.to_line(indent),
+            Self::Gt(gt) => gt.to_line(indent),
+            Self::Gte(gte) => gte.to_line(indent),
+            Self::Lt(lt) => lt.to_line(indent),
+            Self::Lte(lte) => lte.to_line(indent),
+            Self::Mul(mul) => mul.to_line(indent),
+            Self::Ne(ne) => ne.to_line(indent),
+            Self::Or(or) => or.to_line(indent),
+            Self::Sub(sub) => sub.to_line(indent),
             Self::Assign(assign) => assign.to_line(indent),
             Self::Block(block) => block.to_line(indent),
             Self::Call(call) => call.to_line(indent),
@@ -1091,6 +1163,19 @@ impl Expr {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
+            Self::Add(add) => add.to_lines(indent),
+            Self::And(and) => and.to_lines(indent),
+            Self::Cmp(cmp) => cmp.to_lines(indent),
+            Self::Div(div) => div.to_lines(indent),
+            Self::Eq(eq) => eq.to_lines(indent),
+            Self::Gt(gt) => gt.to_lines(indent),
+            Self::Gte(gte) => gte.to_lines(indent),
+            Self::Lt(lt) => lt.to_lines(indent),
+            Self::Lte(lte) => lte.to_lines(indent),
+            Self::Mul(mul) => mul.to_lines(indent),
+            Self::Ne(ne) => ne.to_lines(indent),
+            Self::Or(or) => or.to_lines(indent),
+            Self::Sub(sub) => sub.to_lines(indent),
             Self::Assign(assign) => assign.to_lines(indent),
             Self::Block(block) => block.to_lines(indent),
             Self::Call(call) => call.to_lines(indent),
