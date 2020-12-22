@@ -413,6 +413,11 @@ impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
         Self { params, body }
     }
+
+    pub fn blockify(mut self) -> Self {
+        self.body = self.body.blockify();
+        self
+    }
 }
 
 impl TryFrom<&Val> for Func {
@@ -622,6 +627,23 @@ impl List {
     pub fn new(vals: Vec<Expr>) -> Self {
         Self { vals }
     }
+
+    pub fn to_indented_code(&self, indent: &Indent) -> String {
+        let open_brace = format!("{}[", indent);
+        let close_brace = format!("{}]", indent);
+        let mut lines = vec![open_brace];
+
+        let next_indent = indent.increase();
+
+        for expr in &self.vals {
+            let line = expr.to_indented_code(&next_indent);
+            lines.push(line);
+        }
+
+        lines.push(close_brace);
+        let code = lines.join("\n");
+        code
+    }
 }
 
 impl TryFrom<&Val> for List {
@@ -671,6 +693,51 @@ pub enum Expr {
     Throw(Box<Throw>),
     TrapCall(Box<TrapCall>),
     TryCatch(Box<TryCatch>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Indent {
+    pattern: String,
+    size: usize,
+}
+
+impl Indent {
+    pub fn new(pattern: String, size: usize) -> Self {
+        Self { size, pattern }
+    }
+
+    pub fn increase(&self) -> Self {
+        Self::new(self.pattern.clone(), self.size + 1)
+    }
+}
+
+impl Expr {
+    pub fn is_block(&self) -> bool {
+        matches!(self, Self::Block(_))
+    }
+
+    pub fn to_indented_code(&self, indent: &Indent) -> String {
+        match self {
+            Self::List(list) => list.to_indented_code(indent),
+            Self::Lit(lit) => format!("{}{}", indent, lit.to_axon_code()),
+            _ => todo!(),
+        }
+    }
+
+    /// If the expression is not a block, wrap the expression in a block.
+    pub fn blockify(self) -> Self {
+        if self.is_block() {
+            self
+        } else {
+            Expr::Block(Block::new(vec![self]))
+        }
+    }
+}
+
+impl std::fmt::Display for Indent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.pattern.repeat(self.size))
+    }
 }
 
 impl TryFrom<&Val> for Expr {
