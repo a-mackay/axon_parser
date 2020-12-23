@@ -850,6 +850,9 @@ pub struct Call {
 
 /// Converts expressions, which represent arguments to a function, into a `Line`.
 fn arg_exprs_to_line(args: &[Expr], indent: &Indent) -> Line {
+    // Should return something like
+    // arg1, arg2, {arg3}
+    // with no enclosing parentheses.
     let line_strs = args
         .iter()
         .map(|arg| arg.to_line(indent).inner_str().to_owned())
@@ -865,7 +868,7 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
     //     ...
     // end
     if args.is_empty() {
-        vec![Line::new(indent.clone(), "".to_owned())]
+        vec![Line::new(indent.clone(), "()".to_owned())]
     } else {
         let last_arg = args.last().unwrap();
         if last_arg.is_func() {
