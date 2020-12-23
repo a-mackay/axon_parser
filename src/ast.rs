@@ -616,7 +616,7 @@ impl TryFrom<&Val> for If {
             .expect("if 'cond' could not be parsed as an Expr");
         let if_expr = if_val
             .try_into()
-            .expect("if 'ifExpr' could not be parsed as an Expr");
+            .unwrap_or_else(|_| panic!("if 'ifExpr' could not be parsed as an Expr: \n{:#?}", if_val));
         let else_expr = match else_val {
             Some(else_val) => Some(
                 else_val
@@ -1230,6 +1230,48 @@ impl DictVal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Return {
+    expr: Expr,
+}
+
+impl Return {
+    pub fn new(expr: Expr) -> Self {
+        Self { expr }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.expr.to_line(indent);
+        line.prefix_str("return ")
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut expr_lines = self.expr.to_lines(&indent);
+        let first_expr_line = expr_lines
+            .first()
+            .expect("Return expr should contain at least one line");
+        let new_inner_str = format!("return {}", first_expr_line.inner_str());
+        let new_first_line =
+            Line::new(first_expr_line.indent().clone(), new_inner_str);
+        expr_lines[0] = new_first_line;
+        expr_lines
+    }
+}
+
+impl TryFrom<&Val> for Return {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "return").map_err(|_| ())?;
+        let val =
+            get_val(hash_map, "expr").expect("return should contain 'expr' tag");
+        let expr: Expr = val
+            .try_into()
+            .expect("return 'expr' could not be converted into an Expr");
+        Ok(Self::new(expr))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Throw {
     expr: Expr,
 }
@@ -1356,6 +1398,7 @@ pub enum Expr {
     Neg(Box<Neg>),
     Not(Box<Not>),
     Range(Box<Range>),
+    Return(Box<Return>),
     Throw(Box<Throw>),
     TrapCall(Box<TrapCall>),
     TryCatch(Box<TryCatch>),
@@ -1417,6 +1460,7 @@ impl Expr {
             Self::Neg(_) => Some(1),
             Self::Not(_) => Some(1),
             Self::Range(_) => None,
+            Self::Return(_) => None,
             Self::Throw(_) => None,
             Self::TrapCall(_) => None,
             Self::TryCatch(_) => None,
@@ -1440,15 +1484,6 @@ impl Expr {
             Self::Or(_) => true,
             Self::Sub(_) => true,
             _ => false
-        }
-    }
-
-    fn compare_precedence(&self, other: &Expr) -> Option<std::cmp::Ordering> {
-        match (self.precedence(), other.precedence()) {
-            (Some(self_precedence), Some(other_precedence)) => {
-                Some(self_precedence.cmp(&other_precedence))
-            },
-            _ => None,
         }
     }
 
@@ -1483,6 +1518,7 @@ impl Expr {
             Self::Neg(neg) => neg.to_line(indent),
             Self::Not(not) => not.to_line(indent),
             Self::Range(range) => range.to_line(indent),
+            Self::Return(ret) => ret.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
             Self::TrapCall(trap_call) => trap_call.to_line(indent),
             Self::TryCatch(try_catch) => try_catch.to_line(indent),
@@ -1522,6 +1558,7 @@ impl Expr {
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Not(not) => not.to_lines(indent),
             Self::Range(range) => range.to_lines(indent),
+            Self::Return(ret) => ret.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
             Self::TrapCall(trap_call) => trap_call.to_lines(indent),
             Self::TryCatch(try_catch) => try_catch.to_lines(indent),
@@ -1685,6 +1722,11 @@ impl TryFrom<&Val> for Expr {
         let throw: Option<Throw> = val.try_into().ok();
         if let Some(throw) = throw {
             return Ok(Expr::Throw(Box::new(throw)));
+        }
+
+        let ret: Option<Return> = val.try_into().ok();
+        if let Some(ret) = ret {
+            return Ok(Expr::Return(Box::new(ret)));
         }
 
         let neg: Option<Neg> = val.try_into().ok();
