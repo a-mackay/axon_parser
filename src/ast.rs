@@ -1127,12 +1127,20 @@ fn zero_indent() -> Indent {
 }
 
 fn exprs_to_line(exprs: &[Expr], indent: &Indent) -> Line {
+    separated_exprs_line(exprs, indent, "; ")
+}
+
+fn comma_separated_exprs_line(exprs: &[Expr], indent: &Indent) -> Line {
+    separated_exprs_line(exprs, indent, ", ")
+}
+
+fn separated_exprs_line(exprs: &[Expr], indent: &Indent, separator: &str) -> Line {
     let zero_indent = zero_indent();
     let expr_lines = exprs
         .iter()
         .map(|expr| expr.to_line(&zero_indent).inner_str().to_owned())
         .collect::<Vec<_>>();
-    let line_str = expr_lines.join("; ");
+    let line_str = expr_lines.join(separator);
     Line::new(indent.clone(), line_str)
 }
 
@@ -1470,7 +1478,7 @@ impl List {
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = exprs_to_line(&self.vals, indent);
+        let line = comma_separated_exprs_line(&self.vals, indent);
         line.prefix_str("[").suffix_str("]")
     }
 
