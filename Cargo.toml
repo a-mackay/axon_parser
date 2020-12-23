@@ -3,6 +3,11 @@ name = "axon_parser"
 version = "0.1.0"
 authors = ["A Mackay <opensauceburner@outlook.com>"]
 edition = "2018"
+homepage = "https://github.com/a-mackay/axon_parser"
+repository = "https://github.com/a-mackay/axon_parser"
+description = "Parses a representation of SkySpark's Axon language into an AST"
+keywords = ["skyspark", "axon"]
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
