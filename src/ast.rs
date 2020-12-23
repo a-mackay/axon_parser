@@ -427,7 +427,7 @@ impl FlatIf {
             if let Some(last_final_line) = last_final_line {
                 assert!(lines.len() >= 3);
 
-                // Something like if (a) do ...
+                // Something like 'if (a) do' ...
                 let first_line = lines.first().unwrap();
 
                 let first_line_str = first_line.inner_str();
@@ -439,6 +439,23 @@ impl FlatIf {
             } else {
                 final_lines.append(&mut lines);
             }
+        }
+
+        if let Some(else_expr) = self.else_expr.clone() {
+            let last_final_line = final_lines.last().expect("FlatIf should contain at least one line before its else expr");
+
+            let else_expr = else_expr.blockify();
+            let mut else_lines = else_expr.to_lines(indent);
+
+            // Should be  'do' ...
+            let first_line = else_lines.first().expect("FlatIf else expr should contain at least one line");
+
+            let first_line_str = first_line.inner_str();
+            let new_first_line = last_final_line.suffix_str(&format!(" else {}", first_line_str));
+            else_lines[0] = new_first_line;
+
+            final_lines.pop();
+            final_lines.append(&mut else_lines)
         }
 
         final_lines
@@ -2615,6 +2632,24 @@ mod format_tests {
     }
 
     #[test]
+    fn flat_if_no_nesting_with_else_works() {
+        let cond1 = Expr::Id(tn("a"));
+        let expr1 = lit_str_expr("a-expr");
+        let ce1 = ConditionalExpr::new(cond1, expr1);
+
+        let else1 = lit_str_expr("else-expr");
+
+        let flat_if = FlatIf::new(vec![ce1], Some(else1));
+        let lines = stringify(&flat_if.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "if (a) do");
+        assert_eq!(lines[1], "    \"a-expr\"");
+        assert_eq!(lines[2], "end else do");
+        assert_eq!(lines[3], "    \"else-expr\"");
+        assert_eq!(lines[4], "end");
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
     fn flat_if_some_nesting_with_no_else_works() {
         let cond1 = Expr::Id(tn("a"));
         let expr1 = lit_str_expr("a-expr");
@@ -2624,14 +2659,18 @@ mod format_tests {
         let expr2 = lit_str_expr("b-expr");
         let ce2 = ConditionalExpr::new(cond2, expr2);
 
-        let flat_if = FlatIf::new(vec![ce1, ce2], None);
+        let else1 = lit_str_expr("else-expr");
+
+        let flat_if = FlatIf::new(vec![ce1, ce2], Some(else1));
         let lines = stringify(&flat_if.to_lines(&zero_ind()));
 
         assert_eq!(lines[0], "if (a) do");
         assert_eq!(lines[1], "    \"a-expr\"");
         assert_eq!(lines[2], "end else if (b) do");
         assert_eq!(lines[3], "    \"b-expr\"");
-        assert_eq!(lines[4], "end");
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines[4], "end else do");
+        assert_eq!(lines[5], "    \"else-expr\"");
+        assert_eq!(lines[6], "end");
+        assert_eq!(lines.len(), 7);
     }
 }
