@@ -280,8 +280,8 @@ pub type Lines = Vec<Line>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Line {
-    indent: Indent,
-    line: String,
+    pub indent: Indent,
+    pub line: String,
 }
 
 impl Line {
