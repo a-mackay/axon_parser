@@ -519,16 +519,29 @@ impl If {
     }
 
     fn flatten(&self) -> FlatIf {
-        todo!()
+        let first_cond_expr = ConditionalExpr::new(self.cond.clone(), self.if_expr.clone());
+
+        match &self.else_expr {
+            Some(Expr::If(nested_if)) => {
+                let nested_flat_if = nested_if.flatten();
+                let mut cond_exprs = nested_flat_if.cond_exprs;
+                let else_expr = nested_flat_if.else_expr;
+                cond_exprs.insert(0, first_cond_expr);
+                FlatIf::new(cond_exprs, else_expr)
+            },
+            Some(non_if_expr) => FlatIf::new(vec![first_cond_expr], Some(non_if_expr.clone())),
+            None => FlatIf::new(vec![first_cond_expr], None),
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        // let mut cond = self.cond.clone();
-        // cond.blockify();
+        let flat_if = self.flatten();
+        flat_if.to_line(indent)
+    }
 
-        // let line = cond.to_line(indent).grouped();
-        // let line = line.prefix_str("if ");
-        todo!()
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let flat_if = self.flatten();
+        flat_if.to_lines(indent)
     }
 }
 
