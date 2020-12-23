@@ -28,10 +28,19 @@ macro_rules! impl_line_and_lines_for {
     ($type_name:ty, $bin_op:expr) => {
         impl $type_name {
             fn to_line(&self, indent: &Indent) -> Line {
+                let self_prec = Some(self.0.precedence());
                 let bin_op = &self.0;
                 let zero_indent = zero_indent();
                 let left_line = bin_op.lhs.to_line(&zero_indent);
+
+                let left_prec = bin_op.lhs.precedence();
+                let left_line = group_line_if_necessary(left_line, left_prec, self_prec);
+
                 let right_line = bin_op.rhs.to_line(&zero_indent);
+
+                let right_prec = bin_op.rhs.precedence();
+                let right_line = group_line_if_necessary(right_line, right_prec, self_prec);
+
                 let left_str = left_line.inner_str();
                 let right_str = right_line.inner_str();
                 let op_symbol = $bin_op.to_symbol();
@@ -43,6 +52,22 @@ macro_rules! impl_line_and_lines_for {
                 vec![line]
             }
         }
+    }
+}
+
+fn group_line_if_necessary(line: Line, line_precedence: Option<u8>, compare_precedence: Option<u8>) -> Line {
+    match (line_precedence, compare_precedence) {
+        (Some(line_prec), Some(compare_prec)) => group_line_with_precedence_if_necessary(line, line_prec, compare_prec),
+        _ => line,
+    }
+}
+
+fn group_line_with_precedence_if_necessary(line: Line, line_precedence: u8, compare_precedence: u8) -> Line {
+    use std::cmp::Ordering;
+
+    match line_precedence.cmp(&compare_precedence) {
+        Ordering::Greater => line.grouped(), // Since 1 = highest priority
+        _ => line,
     }
 }
 
@@ -127,8 +152,8 @@ impl BinOp {
         }
     }
 
-    pub fn to_precedence_int(&self) -> u8 {
-        self.bin_op_id.to_precedence_int()
+    pub fn precedence(&self) -> u8 {
+        self.bin_op_id.precedence()
     }
 }
 
@@ -208,7 +233,7 @@ impl BinOpId {
 
     /// Returns an int representing how high the operator's precendence is,
     /// where 2 is the highest precedence for a binary operation.
-    fn to_precedence_int(&self) -> u8 {
+    fn precedence(&self) -> u8 {
         match self {
             Self::Add => 3,
             Self::And => 6,
@@ -238,6 +263,11 @@ pub struct Line {
 impl Line {
     pub fn new(indent: Indent, line: String) -> Self {
         Self { indent, line }
+    }
+
+    /// Return a new line with parentheses added around it.
+    pub fn grouped(&self) -> Line {
+        self.prefix_str("(").suffix_str(")")
     }
 
     pub fn inner_str(&self) -> &str {
@@ -359,6 +389,102 @@ impl TryFrom<&Val> for TryCatch {
     }
 }
 
+/// Represents a chunk of code containing multiple nested
+// if / else if / ... / else expressions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlatIf {
+    cond_exprs: Vec<ConditionalExpr>,
+    else_expr: Option<Expr>,
+}
+
+impl FlatIf {
+    fn new(cond_exprs: Vec<ConditionalExpr>, else_expr: Option<Expr>) -> Self {
+        Self { cond_exprs, else_expr }
+    }
+
+    fn to_line(&self, indent: &Indent) -> Line {
+        let zero_indent = zero_indent();
+        let mut strings = self.cond_exprs.iter().map(|ce| ce.to_line(&zero_indent).inner_str().to_owned()).collect::<Vec<_>>();
+
+        if let Some(else_expr) = self.else_expr.clone() {
+            let else_expr = else_expr.blockify();
+            let else_line = else_expr.to_line(indent);
+            let else_string = else_line.inner_str().to_owned();
+            strings.push(else_string);
+        }
+
+        let string = strings.join(" else ");
+        Line::new(indent.clone(), string)
+    }
+
+    fn to_lines(&self, indent: &Indent) -> Lines {
+        let cond_lines: Vec<Lines> = self.cond_exprs.iter().map(|ce| ce.to_lines(indent)).collect();
+
+        let mut final_lines: Lines = vec![];
+
+        for mut lines in cond_lines {
+            let last_final_line = final_lines.last();
+            if let Some(last_final_line) = last_final_line {
+                assert!(lines.len() >= 3);
+
+                // Something like if (a) do ...
+                let first_line = lines.first().unwrap();
+
+                let first_line_str = first_line.inner_str();
+                let new_first_line = last_final_line.suffix_str(&format!(" else {}", first_line_str));
+                lines[0] = new_first_line;
+
+                final_lines.pop();
+                final_lines.append(&mut lines);
+            } else {
+                final_lines.append(&mut lines);
+            }
+        }
+
+        final_lines
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalExpr {
+    /// The conditional expression, for example x == true
+    cond: Expr,
+    /// The expression that gets executed if the condition is true
+    expr: Expr,
+}
+
+impl ConditionalExpr {
+    fn new(cond: Expr, expr: Expr) -> Self {
+        Self { cond, expr }
+    }
+
+    fn to_line(&self, indent: &Indent) -> Line {
+        // if (something) do a; b; c end
+        let line = self.cond.to_line(indent).grouped();
+        let line = line.prefix_str("if ").suffix_str(" ");
+
+        let expr = self.expr.clone().blockify();
+        let zero_indent = zero_indent();
+        let expr_line = expr.to_line(&zero_indent);
+        let expr_str = expr_line.inner_str();
+
+        line.suffix_str(expr_str)
+    }
+
+    fn to_lines(&self, indent: &Indent) -> Lines {
+        let zero_indent = zero_indent();
+        let cond_line = self.cond.to_line(&zero_indent).grouped().prefix_str("if ").suffix_str(" ");
+        let cond_str = cond_line.inner_str();
+
+        let expr = self.expr.clone().blockify();
+        let mut lines = expr.to_lines(indent);
+        let first_line = lines.first().expect("ConditionalExpr expr should contain at least one line");
+        let new_first_line = first_line.prefix_str(cond_str);
+        lines[0] = new_first_line;
+        lines
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct If {
     cond: Expr,
@@ -373,6 +499,19 @@ impl If {
             if_expr,
             else_expr,
         }
+    }
+
+    fn flatten(&self) -> FlatIf {
+        todo!()
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        // let mut cond = self.cond.clone();
+        // cond.blockify();
+
+        // let line = cond.to_line(indent).grouped();
+        // let line = line.prefix_str("if ");
+        todo!()
     }
 }
 
@@ -648,6 +787,18 @@ pub struct Range {
 impl Range {
     pub fn new(start: Expr, end: Expr) -> Self {
         Self { start, end }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.start.to_line(indent);
+        let zero_indent = zero_indent();
+        let right_line = self.end.to_line(&zero_indent);
+        let right_str = right_line.inner_str();
+        line.suffix_str(&format!("..{}", right_str)).grouped()
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        vec![self.to_line(indent)]
     }
 }
 
@@ -1142,27 +1293,31 @@ impl Indent {
 }
 
 impl Expr {
+    pub fn is_if(&self) -> bool {
+        matches!(self, Self::If(_))
+    }
+
     pub fn is_block(&self) -> bool {
         matches!(self, Self::Block(_))
     }
 
     /// May return an int representing how high the expression's precendence is,
     /// where 1 is the highest precedence.
-    pub fn to_precedence_int(&self) -> Option<u8> {
+    pub fn precedence(&self) -> Option<u8> {
         match self {
-            Self::Add(add) => Some(add.0.to_precedence_int()),
-            Self::And(and) => Some(and.0.to_precedence_int()),
-            Self::Cmp(cmp) => Some(cmp.0.to_precedence_int()),
-            Self::Div(div) => Some(div.0.to_precedence_int()),
-            Self::Eq(eq) => Some(eq.0.to_precedence_int()),
-            Self::Gt(gt) => Some(gt.0.to_precedence_int()),
-            Self::Gte(gte) => Some(gte.0.to_precedence_int()),
-            Self::Lt(lt) => Some(lt.0.to_precedence_int()),
-            Self::Lte(lte) => Some(lte.0.to_precedence_int()),
-            Self::Mul(mul) => Some(mul.0.to_precedence_int()),
-            Self::Ne(ne) => Some(ne.0.to_precedence_int()),
-            Self::Or(or) => Some(or.0.to_precedence_int()),
-            Self::Sub(sub) => Some(sub.0.to_precedence_int()),
+            Self::Add(add) => Some(add.0.precedence()),
+            Self::And(and) => Some(and.0.precedence()),
+            Self::Cmp(cmp) => Some(cmp.0.precedence()),
+            Self::Div(div) => Some(div.0.precedence()),
+            Self::Eq(eq) => Some(eq.0.precedence()),
+            Self::Gt(gt) => Some(gt.0.precedence()),
+            Self::Gte(gte) => Some(gte.0.precedence()),
+            Self::Lt(lt) => Some(lt.0.precedence()),
+            Self::Lte(lte) => Some(lte.0.precedence()),
+            Self::Mul(mul) => Some(mul.0.precedence()),
+            Self::Ne(ne) => Some(ne.0.precedence()),
+            Self::Or(or) => Some(or.0.precedence()),
+            Self::Sub(sub) => Some(sub.0.precedence()),
             Self::Assign(_) => Some(8),
             Self::Block(_) => None,
             Self::Call(_) => None,
@@ -1177,8 +1332,8 @@ impl Expr {
             Self::Neg(_) => Some(1),
             Self::Not(_) => Some(1),
             Self::Range(_) => None,
-            Self::Throw(_) => todo!(),
-            Self::TrapCall(_) => todo!(),
+            Self::Throw(_) => None,
+            Self::TrapCall(_) => None,
             Self::TryCatch(_) => None,
         }
     }
@@ -1203,8 +1358,13 @@ impl Expr {
         }
     }
 
-    fn compare_precedence(&self, other: &Expr) -> std::cmp::Ordering {
-        self.to_precedence_int().cmp(&other.to_precedence_int())
+    fn compare_precedence(&self, other: &Expr) -> Option<std::cmp::Ordering> {
+        match (self.precedence(), other.precedence()) {
+            (Some(self_precedence), Some(other_precedence)) => {
+                Some(self_precedence.cmp(&other_precedence))
+            },
+            _ => None,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1227,6 +1387,7 @@ impl Expr {
             Self::Call(call) => call.to_line(indent),
             Self::Def(def) => def.to_line(indent),
             Self::Dict(dict) => dict.to_line(indent),
+            Self::Func(func) => func.to_line(indent),
             Self::DotCall(dot_call) => dot_call.to_line(indent),
             Self::Id(tag_name) => {
                 Line::new(indent.clone(), tag_name.clone().into_string())
@@ -1235,6 +1396,7 @@ impl Expr {
             Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
             Self::Not(not) => not.to_line(indent),
+            Self::Range(range) => range.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
             Self::TrapCall(trap_call) => trap_call.to_line(indent),
             _ => todo!(),
@@ -1262,6 +1424,7 @@ impl Expr {
             Self::Def(def) => def.to_lines(indent),
             Self::Dict(dict) => dict.to_lines(indent),
             Self::DotCall(dot_call) => dot_call.to_lines(indent),
+            Self::Func(func) => func.to_lines(indent),
             Self::Id(tag_name) => {
                 vec![Line::new(indent.clone(), tag_name.clone().into_string())]
             }
@@ -1271,6 +1434,7 @@ impl Expr {
             }
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Not(not) => not.to_lines(indent),
+            Self::Range(range) => range.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
             Self::TrapCall(trap_call) => trap_call.to_lines(indent),
             _ => todo!(),
@@ -2264,6 +2428,14 @@ mod format_tests {
         Indent::new(INDENT.to_owned(), 0)
     }
 
+    fn lit_str_expr(s: &str) -> Expr {
+        Expr::Lit(lit_str(s))
+    }
+
+    fn lit_str(s: &str) -> Lit {
+        Lit::Str(s.to_owned())
+    }
+
     fn lit_num_expr(n: f64) -> Expr {
         Expr::Lit(lit_num(n))
     }
@@ -2403,5 +2575,63 @@ mod format_tests {
         for s in strings {
             println!("{}", s);
         }
+    }
+
+    #[test]
+    fn simple_precedence_left_works() {
+        // (1 + 2) / 3
+        let add_bin_op = BinOp::new(lit_num_expr(1.0), BinOpId::Add, lit_num_expr(2.0));
+        let add = Box::new(Add(add_bin_op));
+        let div_bin_op = BinOp::new(Expr::Add(add), BinOpId::Div, lit_num_expr(3.0));
+        let div = Div(div_bin_op);
+        let lines = stringify(&div.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "(1 + 2) / 3");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn simple_precedence_right_works() {
+        // (1 + 2) / 3
+        let add_bin_op = BinOp::new(lit_num_expr(2.0), BinOpId::Add, lit_num_expr(3.0));
+        let add = Box::new(Add(add_bin_op));
+        let div_bin_op = BinOp::new(lit_num_expr(1.0), BinOpId::Div, Expr::Add(add));
+        let div = Div(div_bin_op);
+        let lines = stringify(&div.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "1 / (2 + 3)");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn flat_if_no_nesting_with_no_else_works() {
+        let cond1 = Expr::Id(tn("a"));
+        let expr1 = lit_str_expr("a-expr");
+        let ce1 = ConditionalExpr::new(cond1, expr1);
+        let flat_if = FlatIf::new(vec![ce1], None);
+        let lines = stringify(&flat_if.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "if (a) do");
+        assert_eq!(lines[1], "    \"a-expr\"");
+        assert_eq!(lines[2], "end");
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn flat_if_some_nesting_with_no_else_works() {
+        let cond1 = Expr::Id(tn("a"));
+        let expr1 = lit_str_expr("a-expr");
+        let ce1 = ConditionalExpr::new(cond1, expr1);
+
+        let cond2 = Expr::Id(tn("b"));
+        let expr2 = lit_str_expr("b-expr");
+        let ce2 = ConditionalExpr::new(cond2, expr2);
+
+        let flat_if = FlatIf::new(vec![ce1, ce2], None);
+        let lines = stringify(&flat_if.to_lines(&zero_ind()));
+
+        assert_eq!(lines[0], "if (a) do");
+        assert_eq!(lines[1], "    \"a-expr\"");
+        assert_eq!(lines[2], "end else if (b) do");
+        assert_eq!(lines[3], "    \"b-expr\"");
+        assert_eq!(lines[4], "end");
+        assert_eq!(lines.len(), 5);
     }
 }
