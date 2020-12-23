@@ -27,7 +27,7 @@ macro_rules! impl_try_from_val_ref_for {
 macro_rules! impl_line_and_lines_for {
     ($type_name:ty, $bin_op:expr) => {
         impl $type_name {
-            fn to_line(&self, indent: &Indent) -> Line {
+            pub fn to_line(&self, indent: &Indent) -> Line {
                 let self_prec = Some(self.0.precedence());
                 let bin_op = &self.0;
                 let zero_indent = zero_indent();
@@ -52,7 +52,7 @@ macro_rules! impl_line_and_lines_for {
                 )
             }
 
-            fn to_lines(&self, indent: &Indent) -> Lines {
+            pub fn to_lines(&self, indent: &Indent) -> Lines {
                 let line = self.to_line(indent);
                 vec![line]
             }
@@ -157,9 +157,9 @@ impl_line_and_lines_for!(Or, BinOpId::Or);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinOp {
-    lhs: Expr,
-    bin_op_id: BinOpId,
-    rhs: Expr,
+    pub lhs: Expr,
+    pub bin_op_id: BinOpId,
+    pub rhs: Expr,
 }
 
 impl BinOp {
@@ -171,6 +171,8 @@ impl BinOp {
         }
     }
 
+    /// Returns an int representing how high the operator's precendence is,
+    /// where 2 is the highest precedence for a binary operation.
     pub fn precedence(&self) -> u8 {
         self.bin_op_id.precedence()
     }
@@ -214,7 +216,9 @@ pub enum BinOpId {
 }
 
 impl BinOpId {
-    fn type_str(&self) -> &str {
+    /// Returns the value which SkySpark uses to differentiate the types of AST
+    /// dicts.
+    pub fn type_str(&self) -> &str {
         match self {
             Self::Add => "add",
             Self::And => "and",
@@ -232,7 +236,8 @@ impl BinOpId {
         }
     }
 
-    fn to_symbol(&self) -> &str {
+    /// Returns the Axon symbol for this `BinOp`.
+    pub fn to_symbol(&self) -> &str {
         match self {
             Self::Add => "+",
             Self::And => "and",
@@ -252,7 +257,7 @@ impl BinOpId {
 
     /// Returns an int representing how high the operator's precendence is,
     /// where 2 is the highest precedence for a binary operation.
-    fn precedence(&self) -> u8 {
+    pub fn precedence(&self) -> u8 {
         match self {
             Self::Add => 3,
             Self::And => 6,
@@ -289,18 +294,23 @@ impl Line {
         self.prefix_str("(").suffix_str(")")
     }
 
+    /// Return the contents of this line, excluding the indent.
     pub fn inner_str(&self) -> &str {
         &self.line
     }
 
+    /// Return the indent of this line.
     pub fn indent(&self) -> &Indent {
         &self.indent
     }
 
+    /// Return a new line with the string prefixed to the start of the
+    /// contents of this line.
     pub fn prefix_str(&self, prefix: &str) -> Self {
         Self::new(self.indent.clone(), format!("{}{}", prefix, self.line))
     }
 
+    /// Return a new line with the string suffixed to the end of the line.
     pub fn suffix_str(&self, suffix: &str) -> Self {
         Self::new(self.indent.clone(), format!("{}{}", self.line, suffix))
     }
@@ -320,7 +330,7 @@ impl std::fmt::Display for Line {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Neg {
-    operand: Expr,
+    pub operand: Expr,
 }
 
 impl Neg {
@@ -359,9 +369,9 @@ impl TryFrom<&Val> for Neg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TryCatch {
-    try_expr: Expr,
-    exception_name: Option<String>,
-    catch_expr: Expr,
+    pub try_expr: Expr,
+    pub exception_name: Option<String>,
+    pub catch_expr: Expr,
 }
 
 impl TryCatch {
@@ -475,19 +485,19 @@ impl TryFrom<&Val> for TryCatch {
 // if / else if / ... / else expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatIf {
-    cond_exprs: Vec<ConditionalExpr>,
-    else_expr: Option<Expr>,
+    pub cond_exprs: Vec<ConditionalExpr>,
+    pub else_expr: Option<Expr>,
 }
 
 impl FlatIf {
-    fn new(cond_exprs: Vec<ConditionalExpr>, else_expr: Option<Expr>) -> Self {
+    pub fn new(cond_exprs: Vec<ConditionalExpr>, else_expr: Option<Expr>) -> Self {
         Self {
             cond_exprs,
             else_expr,
         }
     }
 
-    fn to_line(&self, indent: &Indent) -> Line {
+    pub fn to_line(&self, indent: &Indent) -> Line {
         let zero_indent = zero_indent();
         let mut strings = self
             .cond_exprs
@@ -506,7 +516,7 @@ impl FlatIf {
         Line::new(indent.clone(), string)
     }
 
-    fn to_lines(&self, indent: &Indent) -> Lines {
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
         let cond_lines: Vec<Lines> = self
             .cond_exprs
             .iter()
@@ -564,17 +574,17 @@ impl FlatIf {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalExpr {
     /// The conditional expression, for example x == true
-    cond: Expr,
+    pub cond: Expr,
     /// The expression that gets executed if the condition is true
-    expr: Expr,
+    pub expr: Expr,
 }
 
 impl ConditionalExpr {
-    fn new(cond: Expr, expr: Expr) -> Self {
+    pub fn new(cond: Expr, expr: Expr) -> Self {
         Self { cond, expr }
     }
 
-    fn to_line(&self, indent: &Indent) -> Line {
+    pub fn to_line(&self, indent: &Indent) -> Line {
         // if (something) do a; b; c end
         let line = self.cond.to_line(indent).grouped();
         let line = line.prefix_str("if ").suffix_str(" ");
@@ -587,7 +597,7 @@ impl ConditionalExpr {
         line.suffix_str(expr_str)
     }
 
-    fn to_lines(&self, indent: &Indent) -> Lines {
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
         let zero_indent = zero_indent();
         let cond_line = self
             .cond
@@ -610,9 +620,9 @@ impl ConditionalExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct If {
-    cond: Expr,
-    if_expr: Expr,
-    else_expr: Option<Expr>,
+    pub cond: Expr,
+    pub if_expr: Expr,
+    pub else_expr: Option<Expr>,
 }
 
 impl If {
@@ -624,7 +634,8 @@ impl If {
         }
     }
 
-    fn flatten(&self) -> FlatIf {
+    /// Return a `FlatIf` containing the same contents as this `If`.
+    pub fn flatten(&self) -> FlatIf {
         let first_cond_expr =
             ConditionalExpr::new(self.cond.clone(), self.if_expr.clone());
 
@@ -689,8 +700,8 @@ impl TryFrom<&Val> for If {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrapCall {
-    target: Expr,
-    key: String,
+    pub target: Expr,
+    pub key: String,
 }
 
 impl TrapCall {
@@ -754,8 +765,8 @@ impl TryFrom<&Val> for TrapCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
-    func_name: String,
-    args: Vec<Expr>,
+    pub func_name: String,
+    pub args: Vec<Expr>,
 }
 
 impl DotCall {
@@ -833,8 +844,8 @@ impl TryFrom<&Val> for DotCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
-    func_name: String,
-    args: Vec<Expr>,
+    pub func_name: String,
+    pub args: Vec<Expr>,
 }
 
 /// Converts expressions, which represent arguments to a function, into a `Line`.
@@ -945,7 +956,7 @@ impl TryFrom<&Val> for Call {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Not {
-    operand: Expr,
+    pub operand: Expr,
 }
 
 impl Not {
@@ -991,8 +1002,8 @@ impl TryFrom<&Val> for Not {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Range {
-    start: Expr,
-    end: Expr,
+    pub start: Expr,
+    pub end: Expr,
 }
 
 impl Range {
@@ -1034,8 +1045,8 @@ impl TryFrom<&Val> for Range {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Func {
-    params: Vec<Param>,
-    body: Expr,
+    pub params: Vec<Param>,
+    pub body: Expr,
 }
 
 impl Func {
@@ -1105,7 +1116,7 @@ impl TryFrom<&Val> for Func {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
-    exprs: Vec<Expr>,
+    pub exprs: Vec<Expr>,
 }
 
 fn zero_indent() -> Indent {
@@ -1337,7 +1348,7 @@ pub enum DictVal {
 }
 
 impl DictVal {
-    fn to_line(&self, indent: &Indent) -> Line {
+    pub fn to_line(&self, indent: &Indent) -> Line {
         // TODO should this be renamed to to_axon_code?
         match self {
             Self::Expr(expr) => expr.to_line(indent),
@@ -1348,7 +1359,7 @@ impl DictVal {
         }
     }
 
-    fn to_lines(&self, indent: &Indent) -> Lines {
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
         match self {
             Self::Expr(expr) => expr.to_lines(indent),
             Self::Marker => {
@@ -1363,7 +1374,7 @@ impl DictVal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return {
-    expr: Expr,
+    pub expr: Expr,
 }
 
 impl Return {
@@ -1405,7 +1416,7 @@ impl TryFrom<&Val> for Return {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Throw {
-    expr: Expr,
+    pub expr: Expr,
 }
 
 impl Throw {
@@ -2212,8 +2223,8 @@ fn type_str(hash_map: &HashMap<TagName, Box<Val>>) -> &str {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct YearMonth {
-    year: u32,
-    month: Month,
+    pub year: u32,
+    pub month: Month,
 }
 
 impl YearMonth {
