@@ -34,17 +34,22 @@ macro_rules! impl_line_and_lines_for {
                 let left_line = bin_op.lhs.to_line(&zero_indent);
 
                 let left_prec = bin_op.lhs.precedence();
-                let left_line = group_line_if_necessary(left_line, left_prec, self_prec);
+                let left_line =
+                    group_line_if_necessary(left_line, left_prec, self_prec);
 
                 let right_line = bin_op.rhs.to_line(&zero_indent);
 
                 let right_prec = bin_op.rhs.precedence();
-                let right_line = group_line_if_necessary(right_line, right_prec, self_prec);
+                let right_line =
+                    group_line_if_necessary(right_line, right_prec, self_prec);
 
                 let left_str = left_line.inner_str();
                 let right_str = right_line.inner_str();
                 let op_symbol = $bin_op.to_symbol();
-                Line::new(indent.clone(), format!("{} {} {}", left_str, op_symbol, right_str))
+                Line::new(
+                    indent.clone(),
+                    format!("{} {} {}", left_str, op_symbol, right_str),
+                )
             }
 
             fn to_lines(&self, indent: &Indent) -> Lines {
@@ -52,17 +57,31 @@ macro_rules! impl_line_and_lines_for {
                 vec![line]
             }
         }
-    }
+    };
 }
 
-fn group_line_if_necessary(line: Line, line_precedence: Option<u8>, compare_precedence: Option<u8>) -> Line {
+fn group_line_if_necessary(
+    line: Line,
+    line_precedence: Option<u8>,
+    compare_precedence: Option<u8>,
+) -> Line {
     match (line_precedence, compare_precedence) {
-        (Some(line_prec), Some(compare_prec)) => group_line_with_precedence_if_necessary(line, line_prec, compare_prec),
+        (Some(line_prec), Some(compare_prec)) => {
+            group_line_with_precedence_if_necessary(
+                line,
+                line_prec,
+                compare_prec,
+            )
+        }
         _ => line,
     }
 }
 
-fn group_line_with_precedence_if_necessary(line: Line, line_precedence: u8, compare_precedence: u8) -> Line {
+fn group_line_with_precedence_if_necessary(
+    line: Line,
+    line_precedence: u8,
+    compare_precedence: u8,
+) -> Line {
     use std::cmp::Ordering;
 
     match line_precedence.cmp(&compare_precedence) {
@@ -383,15 +402,21 @@ impl TryCatch {
 
         assert!(lines.len() >= 3);
 
-        let first_line = lines.first().expect("TryCatch should contain at least one line");
+        let first_line = lines
+            .first()
+            .expect("TryCatch should contain at least one line");
         let new_first_line = first_line.prefix_str("try ");
         lines[0] = new_first_line;
 
-        let last_try_line = lines.last().expect("TryCatch should contain at least one line").clone();
+        let last_try_line = lines
+            .last()
+            .expect("TryCatch should contain at least one line")
+            .clone();
         lines.pop();
 
         if let Some(exc_name) = &self.exception_name {
-            let new_last_try_line = last_try_line.suffix_str(&format!(" catch ({}) ", exc_name));
+            let new_last_try_line =
+                last_try_line.suffix_str(&format!(" catch ({}) ", exc_name));
             lines.push(new_last_try_line);
         } else {
             let new_last_try_line = last_try_line.suffix_str(" catch ");
@@ -405,7 +430,9 @@ impl TryCatch {
 
         let catch_expr = self.catch_expr.clone().blockify();
         let mut catch_lines = catch_expr.to_lines(indent);
-        let first_catch_line = catch_lines.first().expect("TryCatch catch expr should contain at least one line");
+        let first_catch_line = catch_lines
+            .first()
+            .expect("TryCatch catch expr should contain at least one line");
         let new_first_catch_line = first_catch_line.prefix_str(end_catch_str);
         catch_lines[0] = new_first_catch_line;
 
@@ -454,12 +481,19 @@ pub struct FlatIf {
 
 impl FlatIf {
     fn new(cond_exprs: Vec<ConditionalExpr>, else_expr: Option<Expr>) -> Self {
-        Self { cond_exprs, else_expr }
+        Self {
+            cond_exprs,
+            else_expr,
+        }
     }
 
     fn to_line(&self, indent: &Indent) -> Line {
         let zero_indent = zero_indent();
-        let mut strings = self.cond_exprs.iter().map(|ce| ce.to_line(&zero_indent).inner_str().to_owned()).collect::<Vec<_>>();
+        let mut strings = self
+            .cond_exprs
+            .iter()
+            .map(|ce| ce.to_line(&zero_indent).inner_str().to_owned())
+            .collect::<Vec<_>>();
 
         if let Some(else_expr) = self.else_expr.clone() {
             let else_expr = else_expr.blockify();
@@ -473,7 +507,11 @@ impl FlatIf {
     }
 
     fn to_lines(&self, indent: &Indent) -> Lines {
-        let cond_lines: Vec<Lines> = self.cond_exprs.iter().map(|ce| ce.to_lines(indent)).collect();
+        let cond_lines: Vec<Lines> = self
+            .cond_exprs
+            .iter()
+            .map(|ce| ce.to_lines(indent))
+            .collect();
 
         let mut final_lines: Lines = vec![];
 
@@ -486,7 +524,8 @@ impl FlatIf {
                 let first_line = lines.first().unwrap();
 
                 let first_line_str = first_line.inner_str();
-                let new_first_line = last_final_line.suffix_str(&format!(" else {}", first_line_str));
+                let new_first_line = last_final_line
+                    .suffix_str(&format!(" else {}", first_line_str));
                 lines[0] = new_first_line;
 
                 final_lines.pop();
@@ -497,16 +536,21 @@ impl FlatIf {
         }
 
         if let Some(else_expr) = self.else_expr.clone() {
-            let last_final_line = final_lines.last().expect("FlatIf should contain at least one line before its else expr");
+            let last_final_line = final_lines.last().expect(
+                "FlatIf should contain at least one line before its else expr",
+            );
 
             let else_expr = else_expr.blockify();
             let mut else_lines = else_expr.to_lines(indent);
 
             // Should be  'do' ...
-            let first_line = else_lines.first().expect("FlatIf else expr should contain at least one line");
+            let first_line = else_lines
+                .first()
+                .expect("FlatIf else expr should contain at least one line");
 
             let first_line_str = first_line.inner_str();
-            let new_first_line = last_final_line.suffix_str(&format!(" else {}", first_line_str));
+            let new_first_line = last_final_line
+                .suffix_str(&format!(" else {}", first_line_str));
             else_lines[0] = new_first_line;
 
             final_lines.pop();
@@ -545,12 +589,19 @@ impl ConditionalExpr {
 
     fn to_lines(&self, indent: &Indent) -> Lines {
         let zero_indent = zero_indent();
-        let cond_line = self.cond.to_line(&zero_indent).grouped().prefix_str("if ").suffix_str(" ");
+        let cond_line = self
+            .cond
+            .to_line(&zero_indent)
+            .grouped()
+            .prefix_str("if ")
+            .suffix_str(" ");
         let cond_str = cond_line.inner_str();
 
         let expr = self.expr.clone().blockify();
         let mut lines = expr.to_lines(indent);
-        let first_line = lines.first().expect("ConditionalExpr expr should contain at least one line");
+        let first_line = lines
+            .first()
+            .expect("ConditionalExpr expr should contain at least one line");
         let new_first_line = first_line.prefix_str(cond_str);
         lines[0] = new_first_line;
         lines
@@ -574,7 +625,8 @@ impl If {
     }
 
     fn flatten(&self) -> FlatIf {
-        let first_cond_expr = ConditionalExpr::new(self.cond.clone(), self.if_expr.clone());
+        let first_cond_expr =
+            ConditionalExpr::new(self.cond.clone(), self.if_expr.clone());
 
         match &self.else_expr {
             Some(Expr::If(nested_if)) => {
@@ -583,8 +635,10 @@ impl If {
                 let else_expr = nested_flat_if.else_expr;
                 cond_exprs.insert(0, first_cond_expr);
                 FlatIf::new(cond_exprs, else_expr)
-            },
-            Some(non_if_expr) => FlatIf::new(vec![first_cond_expr], Some(non_if_expr.clone())),
+            }
+            Some(non_if_expr) => {
+                FlatIf::new(vec![first_cond_expr], Some(non_if_expr.clone()))
+            }
             None => FlatIf::new(vec![first_cond_expr], None),
         }
     }
@@ -614,9 +668,12 @@ impl TryFrom<&Val> for If {
         let cond_expr = cond_val
             .try_into()
             .expect("if 'cond' could not be parsed as an Expr");
-        let if_expr = if_val
-            .try_into()
-            .unwrap_or_else(|_| panic!("if 'ifExpr' could not be parsed as an Expr: \n{:#?}", if_val));
+        let if_expr = if_val.try_into().unwrap_or_else(|_| {
+            panic!(
+                "if 'ifExpr' could not be parsed as an Expr: \n{:#?}",
+                if_val
+            )
+        });
         let else_expr = match else_val {
             Some(else_val) => Some(
                 else_val
@@ -707,7 +764,10 @@ impl DotCall {
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        let first_arg = self.args.first().expect("DotCall should have at least one argument");
+        let first_arg = self
+            .args
+            .first()
+            .expect("DotCall should have at least one argument");
         let line = first_arg.to_line(indent);
         let zero_indent = zero_indent();
         let trailing_args = &self.args[1..];
@@ -765,7 +825,10 @@ pub struct Call {
 
 /// Converts expressions, which represent arguments to a function, into a Line.
 fn arg_exprs_to_line(args: &[Expr], indent: &Indent) -> Line {
-    let line_strs = args.iter().map(|arg| arg.to_line(indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let line_strs = args
+        .iter()
+        .map(|arg| arg.to_line(indent).inner_str().to_owned())
+        .collect::<Vec<_>>();
     let line_str = line_strs.join(", ");
     Line::new(indent.clone(), line_str)
 }
@@ -777,7 +840,9 @@ impl Call {
 
     pub fn to_line(&self, indent: &Indent) -> Line {
         let args_line = arg_exprs_to_line(&self.args, indent);
-        args_line.prefix_str(&format!("{}(", self.func_name)).suffix_str(")")
+        args_line
+            .prefix_str(&format!("{}(", self.func_name))
+            .suffix_str(")")
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -838,9 +903,13 @@ impl Not {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut lines = self.operand.to_lines(indent);
-        let first_line = lines.first().expect("Not operand should contain at least one line (first)");
+        let first_line = lines
+            .first()
+            .expect("Not operand should contain at least one line (first)");
         let new_first_line = first_line.prefix_str("not (");
-        let last_line = lines.last().expect("Not operand should contain at least one line (last)");
+        let last_line = lines
+            .last()
+            .expect("Not operand should contain at least one line (last)");
         let new_last_line = last_line.suffix_str(")");
         lines[0] = new_first_line;
         lines.pop();
@@ -924,7 +993,8 @@ impl Func {
         let zero_indent = zero_indent();
         let body_line = func.body.to_line(&zero_indent);
         let body_str = body_line.inner_str();
-        line.prefix_str("(").suffix_str(&format!(") => {}", body_str))
+        line.prefix_str("(")
+            .suffix_str(&format!(") => {}", body_str))
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -935,8 +1005,11 @@ impl Func {
         let params_str = params_line.inner_str();
 
         let mut body_lines = func.body.to_lines(indent);
-        let first_body_line = body_lines.first().expect("Func body should have at least one line");
-        let new_first_body_line = first_body_line.prefix_str(&format!("({}) => ", params_str));
+        let first_body_line = body_lines
+            .first()
+            .expect("Func body should have at least one line");
+        let new_first_body_line =
+            first_body_line.prefix_str(&format!("({}) => ", params_str));
         body_lines[0] = new_first_body_line;
         body_lines
     }
@@ -1212,7 +1285,9 @@ impl DictVal {
         match self {
             Self::Expr(expr) => expr.to_line(indent),
             Self::Marker => Line::new(indent.clone(), "marker()".to_owned()),
-            Self::RemoveMarker => Line::new(indent.clone(), "removeMarker()".to_owned()),
+            Self::RemoveMarker => {
+                Line::new(indent.clone(), "removeMarker()".to_owned())
+            }
         }
     }
 
@@ -1262,8 +1337,8 @@ impl TryFrom<&Val> for Return {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "return").map_err(|_| ())?;
-        let val =
-            get_val(hash_map, "expr").expect("return should contain 'expr' tag");
+        let val = get_val(hash_map, "expr")
+            .expect("return should contain 'expr' tag");
         let expr: Expr = val
             .try_into()
             .expect("return 'expr' could not be converted into an Expr");
@@ -1483,7 +1558,7 @@ impl Expr {
             Self::Ne(_) => true,
             Self::Or(_) => true,
             Self::Sub(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -1856,7 +1931,10 @@ impl TryFrom<&Val> for Def {
 }
 
 fn params_to_line(params: &[Param], indent: &Indent) -> Line {
-    let lines = params.iter().map(|param| param.to_line(indent).inner_str().to_owned()).collect::<Vec<_>>();
+    let lines = params
+        .iter()
+        .map(|param| param.to_line(indent).inner_str().to_owned())
+        .collect::<Vec<_>>();
     let line_str = lines.join(", ");
     Line::new(indent.clone(), line_str)
 }
@@ -1878,9 +1956,12 @@ impl Param {
                 let zero_indent = zero_indent();
                 let default_line = default.to_line(&zero_indent);
                 let default_str = default_line.inner_str();
-                Line::new(indent.clone(), format!("{}: {}", self.name, default_str))
+                Line::new(
+                    indent.clone(),
+                    format!("{}: {}", self.name, default_str),
+                )
             }
-            None => Line::new(indent.clone(), self.name.clone().into_string())
+            None => Line::new(indent.clone(), self.name.clone().into_string()),
         }
     }
 
@@ -2544,8 +2625,8 @@ mod tests {
 
 #[cfg(test)]
 mod format_tests {
-    use axon_parseast_parser::parse as ap_parse;
     use super::*;
+    use axon_parseast_parser::parse as ap_parse;
 
     const INDENT: &str = "    ";
 
@@ -2698,7 +2779,7 @@ mod format_tests {
 
     #[test]
     fn func_works() {
-        let val = &ap_parse(r#"{type:"func", params:[], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"test2"}, args:[{type:"call", target:{type:"var", name:"test"}, args:[{type:"literal", val:1}, {type:"literal", val:2}, {type:"dict", names:["var1", "var2"], vals:[{type:"literal", val}, {type:"literal", val:"isVar2"}]}]}]}, {type:"def", name:"dict", val:{type:"call", target:{type:"var", name:"someDict"}, args:[]}}, {type:"assign", lhs:{type:"var", name:"dict"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"dict"}, {type:"literal", val:"tagName"}]}}]}}"#).unwrap();
+        let val = &ap_parse(r#"{type:"func", params:[{name:"equip"}, {name:"dates"}, {name:"occStatus", def:{type:"literal", val:true}}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"equip"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"return", expr:{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"equip"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}}}, {type:"def", name:"gegEquipTypes", val:{type:"dotCall", target:{type:"var", name:"map"}, args:[{type:"dotCall", target:{type:"var", name:"unique"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"var", name:"gegEquipType"}]}, {type:"literal", val:"gegEquipType"}]}, {type:"func", params:[{name:"x"}], body:{type:"dict", names:["v0"], vals:[{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"var", name:"x"}, {type:"literal", val:"gegEquipType"}]}]}}]}}, {type:"def", name:"scheduleEquips", val:{type:"list", vals:[]}}, {type:"def", name:"reqPeriods", val:{type:"list", vals:[]}}, {type:"if", cond:{type:"and", lhs:{type:"or", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"pump"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chiller"}]}}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chillerPlantRef"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"chillerPlantRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chillerPlantRef"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}, elseExpr:{type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"pump"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chillerRef"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"chillerRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chillerRef"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}, elseExpr:{type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chiller"}]}, rhs:{type:"not", operand:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"chillerPlantRef"}]}}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"chillerRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"id"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}}}}, {type:"if", cond:{type:"and", lhs:{type:"or", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"pump"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boiler"}]}}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boilerPlantRef"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"boilerPlantRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boilerPlantRef"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}, elseExpr:{type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"pump"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boilerRef"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"chillerRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boilerRef"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}, elseExpr:{type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boiler"}]}, rhs:{type:"not", operand:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"boilerPlantRef"}]}}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"boilerRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"id"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}}}}, {type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"coolingTower"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"coolingTowerPlantRef"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"coolingTowerPlantRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"coolingTowerPlantRef"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}, {type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"var", name:"chillerPlant"}, rhs:{type:"eq", lhs:{type:"var", name:"coolingTowerPlantRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"coolingTowerPlantRef"}]}}}]}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"y"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"chillerPlantRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"id"}]}}}]}, {type:"func", params:[{name:"z"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"z"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"z"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"z"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}}]}]}}, {type:"if", cond:{type:"and", lhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"return"}]}, rhs:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"fan"}]}}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"returnAirSystemRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"id"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}}, {type:"if", cond:{type:"dotCall", target:{type:"var", name:"has"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"ahu"}]}, ifExpr:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"gegEquipTypes"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"and", lhs:{type:"eq", lhs:{type:"var", name:"gegEquipType"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}, rhs:{type:"eq", lhs:{type:"var", name:"ahuRef"}, rhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"equip"}, {type:"literal", val:"id"}]}}}]}, {type:"func", params:[{name:"y"}], body:{type:"block", exprs:[{type:"if", cond:{type:"eq", lhs:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"dotCall", target:{type:"var", name:"meta"}, args:[{type:"dotCall", target:{type:"var", name:"col"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"y"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}, {type:"literal", val:"v0"}]}]}, {type:"literal", val:"occupMethod"}]}, rhs:{type:"literal", val:1}}, ifExpr:{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"y"}]}}, elseExpr:{type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"dotCall", target:{type:"var", name:"gegEquipToFieldEquips"}, args:[{type:"var", name:"y"}]}, {type:"func", params:[{name:"k"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"scheduleEquips"}, {type:"var", name:"k"}]}}]}}]}}]}}]}]}}]}]}}, {type:"if", cond:{type:"eq", lhs:{type:"dotCall", target:{type:"var", name:"size"}, args:[{type:"var", name:"scheduleEquips"}]}, rhs:{type:"literal", val:0}}, ifExpr:{type:"return", expr:{type:"call", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"equip"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}}, elseExpr:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"scheduleEquips"}, rhs:{type:"dotCall", target:{type:"var", name:"unique"}, args:[{type:"var", name:"scheduleEquips"}, {type:"literal", val:"id"}]}}, {type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"var", name:"scheduleEquips"}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"try", tryExpr:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"reqPeriods"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"reqPeriods"}, {type:"dotCall", target:{type:"var", name:"gegEquipOccupancyHelper"}, args:[{type:"var", name:"x"}, {type:"var", name:"dates"}, {type:"var", name:"occStatus"}]}]}}]}, catchExpr:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"reqPeriods"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"reqPeriods"}, {type:"literal", val:null}]}}]}}]}}]}]}}, {type:"if", cond:{type:"eq", lhs:{type:"var", name:"occStatus"}, rhs:{type:"literal", val:true}}, ifExpr:{type:"return", expr:{type:"call", target:{type:"var", name:"hisPeriodUnion"}, args:[{type:"var", name:"reqPeriods"}]}}}, {type:"if", cond:{type:"eq", lhs:{type:"var", name:"occStatus"}, rhs:{type:"literal", val:false}}, ifExpr:{type:"return", expr:{type:"call", target:{type:"var", name:"hisPeriodIntersection"}, args:[{type:"var", name:"reqPeriods"}]}}}]}}"#).unwrap();
         let func: Func = val.try_into().unwrap();
         let strings = stringify(&func.to_lines(&zero_ind()));
         for s in strings {
@@ -2709,9 +2790,11 @@ mod format_tests {
     #[test]
     fn simple_precedence_left_works() {
         // (1 + 2) / 3
-        let add_bin_op = BinOp::new(lit_num_expr(1.0), BinOpId::Add, lit_num_expr(2.0));
+        let add_bin_op =
+            BinOp::new(lit_num_expr(1.0), BinOpId::Add, lit_num_expr(2.0));
         let add = Box::new(Add(add_bin_op));
-        let div_bin_op = BinOp::new(Expr::Add(add), BinOpId::Div, lit_num_expr(3.0));
+        let div_bin_op =
+            BinOp::new(Expr::Add(add), BinOpId::Div, lit_num_expr(3.0));
         let div = Div(div_bin_op);
         let lines = stringify(&div.to_lines(&zero_ind()));
         assert_eq!(lines[0], "(1 + 2) / 3");
@@ -2721,9 +2804,11 @@ mod format_tests {
     #[test]
     fn simple_precedence_right_works() {
         // (1 + 2) / 3
-        let add_bin_op = BinOp::new(lit_num_expr(2.0), BinOpId::Add, lit_num_expr(3.0));
+        let add_bin_op =
+            BinOp::new(lit_num_expr(2.0), BinOpId::Add, lit_num_expr(3.0));
         let add = Box::new(Add(add_bin_op));
-        let div_bin_op = BinOp::new(lit_num_expr(1.0), BinOpId::Div, Expr::Add(add));
+        let div_bin_op =
+            BinOp::new(lit_num_expr(1.0), BinOpId::Div, Expr::Add(add));
         let div = Div(div_bin_op);
         let lines = stringify(&div.to_lines(&zero_ind()));
         assert_eq!(lines[0], "1 / (2 + 3)");
