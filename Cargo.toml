@@ -8,5 +8,6 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
-axon_parseast_parser = "0.3"
-raystack = "0.6"
+axon_parseast_parser = "0.4"
+raystack_core = "0.1"
+thiserror = "1.0"
