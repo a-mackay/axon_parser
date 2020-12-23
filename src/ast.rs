@@ -126,6 +126,10 @@ impl BinOp {
             rhs,
         }
     }
+
+    pub fn to_precedence_int(&self) -> u8 {
+        self.bin_op_id.to_precedence_int()
+    }
 }
 
 fn val_to_bin_op(
@@ -203,27 +207,23 @@ impl BinOpId {
     }
 
     /// Returns an int representing how high the operator's precendence is,
-    /// where 1 is the highest precedence.
-    fn to_order_int(&self) -> u8 {
+    /// where 2 is the highest precedence for a binary operation.
+    fn to_precedence_int(&self) -> u8 {
         match self {
-            Self::Add => 2,
-            Self::And => 5,
-            Self::Cmp => 4,
-            Self::Div => 1,
-            Self::Eq => 3,
-            Self::Gt => 4,
-            Self::Gte => 4,
-            Self::Lt => 4,
-            Self::Lte => 4,
-            Self::Mul => 1,
-            Self::Ne => 3,
-            Self::Or => 6,
-            Self::Sub => 2,
+            Self::Add => 3,
+            Self::And => 6,
+            Self::Cmp => 5,
+            Self::Div => 2,
+            Self::Eq => 4,
+            Self::Gt => 5,
+            Self::Gte => 5,
+            Self::Lt => 5,
+            Self::Lte => 5,
+            Self::Mul => 2,
+            Self::Ne => 4,
+            Self::Or => 7,
+            Self::Sub => 3,
         }
-    }
-
-    fn compare_precedence(&self, other: &BinOpId) -> std::cmp::Ordering {
-        self.to_order_int().cmp(&other.to_order_int())
     }
 }
 
@@ -605,6 +605,23 @@ pub struct Not {
 impl Not {
     pub fn new(operand: Expr) -> Self {
         Self { operand }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let line = self.operand.to_line(indent);
+        line.prefix_str("not ")
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut lines = self.operand.to_lines(indent);
+        let first_line = lines.first().expect("Not operand should contain at least one line (first)");
+        let new_first_line = first_line.prefix_str("not (");
+        let last_line = lines.last().expect("Not operand should contain at least one line (last)");
+        let new_last_line = last_line.suffix_str(")");
+        lines[0] = new_first_line;
+        lines.pop();
+        lines.push(new_last_line);
+        lines
     }
 }
 
@@ -1101,6 +1118,7 @@ pub enum Expr {
     List(List),
     Lit(Lit),
     Neg(Box<Neg>),
+    Not(Box<Not>),
     Range(Box<Range>),
     Throw(Box<Throw>),
     TrapCall(Box<TrapCall>),
@@ -1126,6 +1144,67 @@ impl Indent {
 impl Expr {
     pub fn is_block(&self) -> bool {
         matches!(self, Self::Block(_))
+    }
+
+    /// May return an int representing how high the expression's precendence is,
+    /// where 1 is the highest precedence.
+    pub fn to_precedence_int(&self) -> Option<u8> {
+        match self {
+            Self::Add(add) => Some(add.0.to_precedence_int()),
+            Self::And(and) => Some(and.0.to_precedence_int()),
+            Self::Cmp(cmp) => Some(cmp.0.to_precedence_int()),
+            Self::Div(div) => Some(div.0.to_precedence_int()),
+            Self::Eq(eq) => Some(eq.0.to_precedence_int()),
+            Self::Gt(gt) => Some(gt.0.to_precedence_int()),
+            Self::Gte(gte) => Some(gte.0.to_precedence_int()),
+            Self::Lt(lt) => Some(lt.0.to_precedence_int()),
+            Self::Lte(lte) => Some(lte.0.to_precedence_int()),
+            Self::Mul(mul) => Some(mul.0.to_precedence_int()),
+            Self::Ne(ne) => Some(ne.0.to_precedence_int()),
+            Self::Or(or) => Some(or.0.to_precedence_int()),
+            Self::Sub(sub) => Some(sub.0.to_precedence_int()),
+            Self::Assign(_) => Some(8),
+            Self::Block(_) => None,
+            Self::Call(_) => None,
+            Self::Def(_) => None,
+            Self::Dict(_) => None,
+            Self::DotCall(_) => Some(0),
+            Self::Func(_) => None,
+            Self::Id(_) => None,
+            Self::If(_) => None,
+            Self::List(_) => None,
+            Self::Lit(_) => None,
+            Self::Neg(_) => Some(1),
+            Self::Not(_) => Some(1),
+            Self::Range(_) => None,
+            Self::Throw(_) => todo!(),
+            Self::TrapCall(_) => todo!(),
+            Self::TryCatch(_) => None,
+        }
+    }
+
+    /// Returns true if this expression is a binary operation.
+    pub fn is_bin_op(&self) -> bool {
+        match self {
+            Self::Add(_) => true,
+            Self::And(_) => true,
+            Self::Cmp(_) => true,
+            Self::Div(_) => true,
+            Self::Eq(_) => true,
+            Self::Gt(_) => true,
+            Self::Gte(_) => true,
+            Self::Lt(_) => true,
+            Self::Lte(_) => true,
+            Self::Mul(_) => true,
+            Self::Ne(_) => true,
+            Self::Or(_) => true,
+            Self::Sub(_) => true,
+            _ => false
+        }
+    }
+
+    fn compare_precedence(&self, other: &Expr) -> std::cmp::Ordering {
+        self.to_precedence_int().cmp(&other.to_precedence_int())
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1155,6 +1234,7 @@ impl Expr {
             Self::List(list) => list.to_line(indent),
             Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
+            Self::Not(not) => not.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
             Self::TrapCall(trap_call) => trap_call.to_line(indent),
             _ => todo!(),
@@ -1182,7 +1262,6 @@ impl Expr {
             Self::Def(def) => def.to_lines(indent),
             Self::Dict(dict) => dict.to_lines(indent),
             Self::DotCall(dot_call) => dot_call.to_lines(indent),
-            Self::Dict(dict) => dict.to_lines(indent),
             Self::Id(tag_name) => {
                 vec![Line::new(indent.clone(), tag_name.clone().into_string())]
             }
@@ -1191,6 +1270,7 @@ impl Expr {
                 vec![Line::new(indent.clone(), lit.to_axon_code())]
             }
             Self::Neg(neg) => neg.to_lines(indent),
+            Self::Not(not) => not.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
             Self::TrapCall(trap_call) => trap_call.to_lines(indent),
             _ => todo!(),
@@ -1359,6 +1439,11 @@ impl TryFrom<&Val> for Expr {
         let neg: Option<Neg> = val.try_into().ok();
         if let Some(neg) = neg {
             return Ok(Expr::Neg(Box::new(neg)));
+        }
+
+        let not: Option<Not> = val.try_into().ok();
+        if let Some(not) = not {
+            return Ok(Expr::Not(Box::new(not)));
         }
 
         Err(())
