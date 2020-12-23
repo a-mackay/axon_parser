@@ -357,6 +357,61 @@ impl TryCatch {
             catch_expr,
         }
     }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        // try do a; b end catch <(ex)> do c; d end
+        let try_expr = self.try_expr.clone().blockify();
+        let line = try_expr.to_line(indent).prefix_str("try ");
+
+        let line = if let Some(exc_name) = &self.exception_name {
+            line.suffix_str(&format!(" catch ({}) ", exc_name))
+        } else {
+            line.suffix_str(" catch ")
+        };
+
+        let catch_expr = self.catch_expr.clone().blockify();
+        let zero_indent = zero_indent();
+        let catch_line = catch_expr.to_line(&zero_indent);
+        let catch_str = catch_line.inner_str();
+
+        line.suffix_str(catch_str)
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let try_expr = self.try_expr.clone().blockify();
+        let mut lines = try_expr.to_lines(indent);
+
+        assert!(lines.len() >= 3);
+
+        let first_line = lines.first().expect("TryCatch should contain at least one line");
+        let new_first_line = first_line.prefix_str("try ");
+        lines[0] = new_first_line;
+
+        let last_try_line = lines.last().expect("TryCatch should contain at least one line").clone();
+        lines.pop();
+
+        if let Some(exc_name) = &self.exception_name {
+            let new_last_try_line = last_try_line.suffix_str(&format!(" catch ({}) ", exc_name));
+            lines.push(new_last_try_line);
+        } else {
+            let new_last_try_line = last_try_line.suffix_str(" catch ");
+            lines.push(new_last_try_line);
+        }
+
+        // Something like 'end catch (abc) '
+        let end_catch_line = lines.last().unwrap().clone();
+        let end_catch_str = end_catch_line.inner_str();
+        lines.pop();
+
+        let catch_expr = self.catch_expr.clone().blockify();
+        let mut catch_lines = catch_expr.to_lines(indent);
+        let first_catch_line = catch_lines.first().expect("TryCatch catch expr should contain at least one line");
+        let new_first_catch_line = first_catch_line.prefix_str(end_catch_str);
+        catch_lines[0] = new_first_catch_line;
+
+        lines.append(&mut catch_lines);
+        lines
+    }
 }
 
 impl TryFrom<&Val> for TryCatch {
@@ -1422,6 +1477,7 @@ impl Expr {
             Self::Id(tag_name) => {
                 Line::new(indent.clone(), tag_name.clone().into_string())
             }
+            Self::If(iff) => iff.to_line(indent),
             Self::List(list) => list.to_line(indent),
             Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
@@ -1429,7 +1485,7 @@ impl Expr {
             Self::Range(range) => range.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
             Self::TrapCall(trap_call) => trap_call.to_line(indent),
-            _ => todo!(),
+            Self::TryCatch(try_catch) => try_catch.to_line(indent),
         }
     }
 
@@ -1458,6 +1514,7 @@ impl Expr {
             Self::Id(tag_name) => {
                 vec![Line::new(indent.clone(), tag_name.clone().into_string())]
             }
+            Self::If(iff) => iff.to_lines(indent),
             Self::List(list) => list.to_lines(indent),
             Self::Lit(lit) => {
                 vec![Line::new(indent.clone(), lit.to_axon_code())]
@@ -1467,7 +1524,7 @@ impl Expr {
             Self::Range(range) => range.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
             Self::TrapCall(trap_call) => trap_call.to_lines(indent),
-            _ => todo!(),
+            Self::TryCatch(try_catch) => try_catch.to_lines(indent),
         }
     }
 
@@ -2685,5 +2742,37 @@ mod format_tests {
         assert_eq!(lines[5], "    \"else-expr\"");
         assert_eq!(lines[6], "end");
         assert_eq!(lines.len(), 7);
+    }
+
+    #[test]
+    fn simple_try_catch_no_exc_name_works() {
+        let try_expr = lit_str_expr("try-expr");
+        let catch_expr = lit_str_expr("catch-expr");
+        let tc = TryCatch::new(try_expr, None, catch_expr);
+
+        let lines = stringify(&tc.to_lines(&zero_ind()));
+
+        assert_eq!(lines[0], "try do");
+        assert_eq!(lines[1], "    \"try-expr\"");
+        assert_eq!(lines[2], "end catch do");
+        assert_eq!(lines[3], "    \"catch-expr\"");
+        assert_eq!(lines[4], "end");
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn simple_try_catch_with_exc_name_works() {
+        let try_expr = lit_str_expr("try-expr");
+        let catch_expr = lit_str_expr("catch-expr");
+        let tc = TryCatch::new(try_expr, Some("ex".to_owned()), catch_expr);
+
+        let lines = stringify(&tc.to_lines(&zero_ind()));
+
+        assert_eq!(lines[0], "try do");
+        assert_eq!(lines[1], "    \"try-expr\"");
+        assert_eq!(lines[2], "end catch (ex) do");
+        assert_eq!(lines[3], "    \"catch-expr\"");
+        assert_eq!(lines[4], "end");
+        assert_eq!(lines.len(), 5);
     }
 }
