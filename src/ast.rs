@@ -798,7 +798,6 @@ impl DotCall {
             let first_arg_line = arg_lines
                 .first()
                 .expect("DotCall args should contain at least one line");
-            // dbg!(format!("line: {}", first_arg_line));
             let first_arg_line_str = first_arg_line.inner_str();
 
             let new_last_target_line = last_target_line.suffix_str(&format!(".{}{}", self.func_name, first_arg_line_str));
