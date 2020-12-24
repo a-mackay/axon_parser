@@ -766,44 +766,49 @@ impl TryFrom<&Val> for TrapCall {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
     pub func_name: String,
+    pub target: Box<Expr>,
     pub args: Vec<Expr>,
 }
 
 impl DotCall {
-    pub fn new(func_name: String, args: Vec<Expr>) -> Self {
-        Self { func_name, args }
+    pub fn new(func_name: String, target: Box<Expr>, args: Vec<Expr>) -> Self {
+        Self { func_name, target, args }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
-        let first_arg = self
-            .args
-            .first()
-            .expect("DotCall should have at least one argument");
-        let line = first_arg.to_line(indent);
+        let line = self.target.to_line(indent);
         let zero_indent = zero_indent();
-        let trailing_args = &self.args[1..];
-        let trailing_line = arg_exprs_to_line(trailing_args, &zero_indent);
+        let trailing_line = arg_exprs_to_line(&self.args, &zero_indent);
         let trailing_args_str = trailing_line.inner_str();
         line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let target_arg = self
-            .args
-            .first()
-            .expect("DotCall should have at least one argument");
-        let zero_indent = zero_indent();
-        let target_line = target_arg.to_line(&zero_indent);
-        let target_str = target_line.inner_str();
+        let mut lines = self.target.to_lines(indent);
+        let last_target_line = lines.last().expect("DotCall target should contain at least one line");
 
-        let remaining_args = &self.args[1..];
-        let mut lines = arg_exprs_to_lines(remaining_args, indent);
-        let first_arg_line = lines
-            .first()
-            .expect("DotCall args should contain at least one line");
-        let new_first_arg_line = first_arg_line
-            .prefix_str(&format!("{}.{}", target_str, self.func_name));
-        lines[0] = new_first_arg_line;
+        let args = &self.args;
+
+        if args.is_empty() {
+            let new_last_target_line = last_target_line.suffix_str(&format!(".{}()", self.func_name));
+            lines.pop();
+            lines.push(new_last_target_line);
+        } else {
+            let mut arg_lines = arg_exprs_to_lines(args, indent);
+            let first_arg_line = arg_lines
+                .first()
+                .expect("DotCall args should contain at least one line");
+            // dbg!(format!("line: {}", first_arg_line));
+            let first_arg_line_str = first_arg_line.inner_str();
+
+            let new_last_target_line = last_target_line.suffix_str(&format!(".{}{}", self.func_name, first_arg_line_str));
+            lines.pop();
+            lines.push(new_last_target_line);
+
+            arg_lines.remove(0);
+            lines.append(&mut arg_lines);
+        }
+
         lines
     }
 }
@@ -835,7 +840,9 @@ impl TryFrom<&Val> for DotCall {
                     exprs.push(expr);
                 }
 
-                Ok(Self::new(func_name, exprs))
+                let target = exprs.remove(0);
+
+                Ok(Self::new(func_name, Box::new(target), exprs))
             }
             _ => panic!("expected dotCall 'target' to be a Dict"),
         }
@@ -1493,12 +1500,13 @@ impl List {
             let next_indent = indent.increase();
 
             for expr in &self.vals {
-                let expr_lines = expr.to_lines(&next_indent);
-                let mut comma_expr_lines = expr_lines
-                    .into_iter()
-                    .map(|ln| ln.suffix_str(","))
-                    .collect();
-                lines.append(&mut comma_expr_lines);
+                let mut expr_lines = expr.to_lines(&next_indent);
+                let last_expr_line = expr_lines.last().expect("List expressions should contain at least one line");
+                let new_last_expr_line = last_expr_line.suffix_str(",");
+                expr_lines.pop();
+                expr_lines.push(new_last_expr_line);
+
+                lines.append(&mut expr_lines);
             }
 
             lines.push(close_brace);
@@ -2488,9 +2496,9 @@ mod tests {
     fn val_to_simple_dot_call_works() {
         let val = &ap_parse(r#"{type:"dotCall", target:{type:"var", name:"parseNumber"}, args:[{type:"literal", val:1}]}"#).unwrap();
         let func_name = "parseNumber".to_owned();
-        let arg = Expr::Lit(lit_num(1.0));
-        let args = vec![arg];
-        let expected = DotCall::new(func_name, args);
+        let target = Expr::Lit(lit_num(1.0));
+        let args = vec![];
+        let expected = DotCall::new(func_name, Box::new(target), args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
     }
