@@ -482,7 +482,7 @@ impl TryFrom<&Val> for TryCatch {
 }
 
 /// Represents a chunk of code containing multiple nested
-// if / else if / ... / else expressions.
+/// if / else if / ... / else expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatIf {
     pub cond_exprs: Vec<ConditionalExpr>,
