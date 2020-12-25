@@ -2724,17 +2724,17 @@ mod tests {
     }
 
     #[test]
-    fn old_chart_demo_works() {
+    fn misc_func_works() {
         let val =
-            &ap_parse(include_str!("../tests/old_chart_demo.txt")).unwrap();
+            &ap_parse(include_str!("../test_input/misc_func.txt")).unwrap();
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
 
     #[test]
-    fn old_chart_demo_kwh_works() {
+    fn validate_works() {
         let val =
-            &ap_parse(include_str!("../tests/old_chart_demo_kwh.txt")).unwrap();
+            &ap_parse(include_str!("../test_input/validate.txt")).unwrap();
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
