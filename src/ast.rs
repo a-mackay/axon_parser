@@ -1565,9 +1565,16 @@ pub enum Expr {
     TryCatch(Box<TryCatch>),
 }
 
+/// Represents the indentation at the start of a line of Axon code.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Indent {
+    /// The identation characters, for example 2-space indentation would
+    /// be represented by "  ".
     pattern: String,
+    /// The number of times the indentation characters appear, for example
+    /// if the line of code was indented three times, using 2-space indentation,
+    /// for example "      <code goes here>",
+    /// `size` would be 3 and `pattern` would be "  ".
     size: usize,
 }
 
@@ -1576,6 +1583,8 @@ impl Indent {
         Self { size, pattern }
     }
 
+    /// Return a new `Indent` with its size equal to the current `Indent`s
+    /// size plus one.
     pub fn increase(&self) -> Self {
         Self::new(self.pattern.clone(), self.size + 1)
     }
