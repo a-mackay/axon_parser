@@ -198,6 +198,7 @@ fn val_to_bin_op(
     Ok(bin_op)
 }
 
+/// Enumerates the types of binary operations present in Axon code.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinOpId {
     Add,
@@ -276,11 +277,16 @@ impl BinOpId {
     }
 }
 
+/// Represents lines of Axon code.
 pub type Lines = Vec<Line>;
 
+/// Represents a line of Axon code, including the indentation at the start
+/// of the line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Line {
+    /// The indentation of the line (excluding the Axon code).
     pub indent: Indent,
+    /// The remaining part of the line (excluding the indentation).
     pub line: String,
 }
 
@@ -1357,10 +1363,14 @@ fn val_is_remove_marker(val: &Val) -> bool {
     }
 }
 
+/// Represents the value of some tag in an Axon dict.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DictVal {
+    /// An Axon expression.
     Expr(Expr),
+    /// The Axon marker value.
     Marker,
+    /// The Axon removeMarker value.
     RemoveMarker,
 }
 
@@ -1530,6 +1540,7 @@ impl TryFrom<&Val> for List {
     }
 }
 
+/// Enumerates the types of Axon expression.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Add(Box<Add>),
@@ -2107,6 +2118,7 @@ impl TryFrom<&ap::Val> for Param {
     }
 }
 
+/// A Axon literal value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Lit {
     Bool(bool),
@@ -2145,6 +2157,8 @@ fn number_to_axon_code(n: &Number) -> String {
     }
 }
 
+/// Enumerates the types of errors that can occur when converting to a
+/// `Lit`.
 pub enum ConvertLitError {
     IsDictMarker,
     IsDictRemoveMarker,
@@ -2205,6 +2219,8 @@ fn map_for_type<'a, 'b>(
     }
 }
 
+/// Enumerates the types of errors that can occur when trying to convert
+/// a loosely-typed value into a strongly-typed map.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MapForTypeError {
     NotDict,
@@ -2248,6 +2264,7 @@ fn type_str(hash_map: &HashMap<TagName, Box<Val>>) -> &str {
         .expect("expected the 'type' tag's value to be a literal string")
 }
 
+/// Represents a month in a specific year.
 #[derive(Clone, Debug, PartialEq)]
 pub struct YearMonth {
     pub year: u32,
@@ -2276,6 +2293,7 @@ impl From<&ap::YearMonth> for YearMonth {
     }
 }
 
+/// Represents a month.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Month {
     Jan,

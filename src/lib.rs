@@ -26,6 +26,7 @@ pub fn parse_func(axon: &str) -> Result<ast::Func, Error> {
     Ok(func)
 }
 
+/// Encapsulates the types of errors that can occur in this library.
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Could not parse the representation of Axon code")]
