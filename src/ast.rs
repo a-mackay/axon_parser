@@ -7,7 +7,6 @@ use std::convert::{From, TryFrom, TryInto};
 
 // TODO later
 // defcomp
-// _ params like run(_, _)
 
 macro_rules! impl_try_from_val_ref_for {
     ($type_name:ty, $bin_op:expr) => {
@@ -778,7 +777,11 @@ pub struct DotCall {
 }
 
 impl DotCall {
-    pub fn new(func_name: FuncName, target: Box<Expr>, args: Vec<Expr>) -> Self {
+    pub fn new(
+        func_name: FuncName,
+        target: Box<Expr>,
+        args: Vec<Expr>,
+    ) -> Self {
         Self {
             func_name,
             target,
@@ -859,10 +862,18 @@ impl TryFrom<&Val> for DotCall {
                 let target = exprs.remove(0);
 
                 if let Some(func_name) = TagName::new(func_name.clone()) {
-                    Ok(Self::new(FuncName::TagName(func_name), Box::new(target), exprs))
+                    Ok(Self::new(
+                        FuncName::TagName(func_name),
+                        Box::new(target),
+                        exprs,
+                    ))
                 } else {
                     let qname = Qname::new(func_name);
-                    Ok(Self::new(FuncName::Qname(qname), Box::new(target), exprs))
+                    Ok(Self::new(
+                        FuncName::Qname(qname),
+                        Box::new(target),
+                        exprs,
+                    ))
                 }
             }
             _ => panic!("expected dotCall 'target' to be a Dict"),
@@ -948,16 +959,16 @@ impl TryFrom<&Val> for PartialCall {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let hash_map = map_for_type(val, "call").map_err(|_| ())?;
+        let hash_map = map_for_type(val, "partialCall").map_err(|_| ())?;
         let target =
-            get_val(hash_map, "target").expect("call should have 'target' tag");
+            get_val(hash_map, "target").expect("partialCall should have 'target' tag");
         match target {
             Val::Dict(target_hash_map) => {
                 let func_name = get_literal_str(target_hash_map, "name")
-                    .expect("call 'target' should have 'name' string tag");
+                    .expect("partialCall 'target' should have 'name' string tag");
                 let func_name = func_name.to_owned();
                 let args = get_vals(hash_map, "args")
-                    .expect("call should have 'args' tag");
+                    .expect("partialCall should have 'args' tag");
 
                 let mut exprs = vec![];
 
@@ -967,7 +978,7 @@ impl TryFrom<&Val> for PartialCall {
                     } else {
                         let expr: Expr = arg.try_into().unwrap_or_else(|_| {
                             panic!(
-                                "call arg could not be parsed as an Expr: {:?}",
+                                "partialCall arg could not be parsed as an Expr: {:?}",
                                 arg
                             )
                         });
@@ -983,13 +994,16 @@ impl TryFrom<&Val> for PartialCall {
                     Ok(Self::new(FuncName::Qname(qname), exprs))
                 }
             }
-            _ => panic!("expected call 'target' to be a Dict"),
+            _ => panic!("expected partialCall 'target' to be a Dict"),
         }
     }
 }
 
 /// Converts expressions, which represent arguments to a function, into a `Line`.
-fn partial_call_arg_exprs_to_line(args: &[PartialCallArgument], indent: &Indent) -> Line {
+fn partial_call_arg_exprs_to_line(
+    args: &[PartialCallArgument],
+    indent: &Indent,
+) -> Line {
     // Should return something like
     // arg1, arg2, {arg3}
     // with no enclosing parentheses.
@@ -1002,7 +1016,10 @@ fn partial_call_arg_exprs_to_line(args: &[PartialCallArgument], indent: &Indent)
 }
 
 /// Converts expressions, which represent arguments to a function, into `Lines`.
-fn partial_call_arg_exprs_to_lines(args: &[PartialCallArgument], indent: &Indent) -> Lines {
+fn partial_call_arg_exprs_to_lines(
+    args: &[PartialCallArgument],
+    indent: &Indent,
+) -> Lines {
     // Should return something like
     // (arg1, arg2) (lambdaArg1, lambdaArg2) => do
     //     ...
@@ -1027,7 +1044,8 @@ fn partial_call_arg_exprs_to_lines(args: &[PartialCallArgument], indent: &Indent
             };
             let zero_indent = zero_indent();
             let preceding_line =
-                partial_call_arg_exprs_to_line(preceding_args, &zero_indent).grouped();
+                partial_call_arg_exprs_to_line(preceding_args, &zero_indent)
+                    .grouped();
             let preceding_str = preceding_line.inner_str();
             let new_first_func_line =
                 first_func_line.prefix_str(&format!("{} ", preceding_str));
@@ -2750,7 +2768,8 @@ mod tests {
         let func_name = tn("parseNumber");
         let target = Expr::Lit(lit_num(1.0));
         let args = vec![];
-        let expected = DotCall::new(FuncName::TagName(func_name), Box::new(target), args);
+        let expected =
+            DotCall::new(FuncName::TagName(func_name), Box::new(target), args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
     }
@@ -2761,7 +2780,8 @@ mod tests {
         let qname = Qname::new("core::parseNumber".to_owned());
         let target = Expr::Lit(lit_num(1.0));
         let args = vec![];
-        let expected = DotCall::new(FuncName::Qname(qname), Box::new(target), args);
+        let expected =
+            DotCall::new(FuncName::Qname(qname), Box::new(target), args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
     }
@@ -3267,5 +3287,18 @@ mod format_tests {
         assert_eq!(lines[3], "    \"catch-expr\"");
         assert_eq!(lines[4], "end");
         assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn partial_call_works() {
+        let func_name = FuncName::TagName(tn("utilsAssert"));
+        let null = PartialCallArgument::Placeholder;
+        let arg2 = PartialCallArgument::Expr(Expr::Lit(lit_num(1.0)));
+        let pc = PartialCall::new(func_name, vec![null, arg2]);
+
+        let lines = stringify(&pc.to_lines(&zero_ind()));
+
+        assert_eq!(lines[0], "utilsAssert(_, 1)");
+        assert_eq!(lines.len(), 1);
     }
 }
