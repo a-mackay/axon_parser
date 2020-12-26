@@ -886,6 +886,161 @@ impl std::fmt::Display for FuncName {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum PartialCallArgument {
+    Expr(Expr),
+    Placeholder,
+}
+
+impl PartialCallArgument {
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        match self {
+            Self::Expr(expr) => expr.to_line(indent),
+            Self::Placeholder => Line::new(indent.clone(), "_".to_owned()),
+        }
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        match self {
+            Self::Expr(expr) => expr.to_lines(indent),
+            Self::Placeholder => vec![self.to_line(indent)],
+        }
+    }
+
+    fn is_func(&self) -> bool {
+        match self {
+            Self::Expr(expr) => expr.is_func(),
+            Self::Placeholder => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartialCall {
+    pub func_name: FuncName,
+    pub args: Vec<PartialCallArgument>,
+}
+
+impl PartialCall {
+    pub fn new(func_name: FuncName, args: Vec<PartialCallArgument>) -> Self {
+        Self { func_name, args }
+    }
+
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let args_line = partial_call_arg_exprs_to_line(&self.args, indent);
+        args_line
+            .prefix_str(&format!("{}(", self.func_name))
+            .suffix_str(")")
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        let mut lines = partial_call_arg_exprs_to_lines(&self.args, indent);
+        let first_arg_line = lines
+            .first()
+            .expect("Call args should contain at least one line");
+        let func_name = format!("{}", &self.func_name);
+        let new_first_arg_line = first_arg_line.prefix_str(&func_name);
+        lines[0] = new_first_arg_line;
+        lines
+    }
+}
+
+impl TryFrom<&Val> for PartialCall {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "call").map_err(|_| ())?;
+        let target =
+            get_val(hash_map, "target").expect("call should have 'target' tag");
+        match target {
+            Val::Dict(target_hash_map) => {
+                let func_name = get_literal_str(target_hash_map, "name")
+                    .expect("call 'target' should have 'name' string tag");
+                let func_name = func_name.to_owned();
+                let args = get_vals(hash_map, "args")
+                    .expect("call should have 'args' tag");
+
+                let mut exprs = vec![];
+
+                for arg in args {
+                    if matches!(arg, Val::Lit(ap::Lit::Null)) {
+                        exprs.push(PartialCallArgument::Placeholder);
+                    } else {
+                        let expr: Expr = arg.try_into().unwrap_or_else(|_| {
+                            panic!(
+                                "call arg could not be parsed as an Expr: {:?}",
+                                arg
+                            )
+                        });
+                        exprs.push(PartialCallArgument::Expr(expr));
+                    }
+                }
+
+                if let Some(func_name) = TagName::new(func_name.clone()) {
+                    Ok(Self::new(FuncName::TagName(func_name), exprs))
+                } else {
+                    // We assume it's a qname:
+                    let qname = Qname::new(func_name);
+                    Ok(Self::new(FuncName::Qname(qname), exprs))
+                }
+            }
+            _ => panic!("expected call 'target' to be a Dict"),
+        }
+    }
+}
+
+/// Converts expressions, which represent arguments to a function, into a `Line`.
+fn partial_call_arg_exprs_to_line(args: &[PartialCallArgument], indent: &Indent) -> Line {
+    // Should return something like
+    // arg1, arg2, {arg3}
+    // with no enclosing parentheses.
+    let line_strs = args
+        .iter()
+        .map(|arg| arg.to_line(indent).inner_str().to_owned())
+        .collect::<Vec<_>>();
+    let line_str = line_strs.join(", ");
+    Line::new(indent.clone(), line_str)
+}
+
+/// Converts expressions, which represent arguments to a function, into `Lines`.
+fn partial_call_arg_exprs_to_lines(args: &[PartialCallArgument], indent: &Indent) -> Lines {
+    // Should return something like
+    // (arg1, arg2) (lambdaArg1, lambdaArg2) => do
+    //     ...
+    // end
+    if args.is_empty() {
+        vec![Line::new(indent.clone(), "()".to_owned())]
+    } else {
+        let last_arg = args.last().unwrap();
+        if last_arg.is_func() {
+            let func = last_arg.clone();
+            // Format it as a trailing lambda.
+            let mut lines = func.to_lines(indent);
+            let first_func_line = lines
+                .first()
+                .expect("func should contain at least one line");
+
+            // everything except the trailing func expr:
+            let preceding_args = if args.len() == 1 {
+                &[] // The func was the only argument, there are no preceding args.
+            } else {
+                &args[..args.len()]
+            };
+            let zero_indent = zero_indent();
+            let preceding_line =
+                partial_call_arg_exprs_to_line(preceding_args, &zero_indent).grouped();
+            let preceding_str = preceding_line.inner_str();
+            let new_first_func_line =
+                first_func_line.prefix_str(&format!("{} ", preceding_str));
+            lines[0] = new_first_func_line;
+            lines
+        } else {
+            let line = partial_call_arg_exprs_to_line(args, indent).grouped();
+            vec![line]
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Call {
     pub func_name: FuncName,
     pub args: Vec<Expr>,
@@ -1613,6 +1768,7 @@ pub enum Expr {
     Lit(Lit),
     Neg(Box<Neg>),
     Not(Box<Not>),
+    PartialCall(PartialCall),
     Range(Box<Range>),
     Return(Box<Return>),
     Throw(Box<Throw>),
@@ -1688,6 +1844,7 @@ impl Expr {
             Self::Lit(_) => None,
             Self::Neg(_) => Some(1),
             Self::Not(_) => Some(1),
+            Self::PartialCall(_) => None,
             Self::Range(_) => None,
             Self::Return(_) => None,
             Self::Throw(_) => None,
@@ -1746,6 +1903,7 @@ impl Expr {
             Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
             Self::Not(not) => not.to_line(indent),
+            Self::PartialCall(partial_call) => partial_call.to_line(indent),
             Self::Range(range) => range.to_line(indent),
             Self::Return(ret) => ret.to_line(indent),
             Self::Throw(throw) => throw.to_line(indent),
@@ -1786,6 +1944,7 @@ impl Expr {
             }
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Not(not) => not.to_lines(indent),
+            Self::PartialCall(partial_call) => partial_call.to_lines(indent),
             Self::Range(range) => range.to_lines(indent),
             Self::Return(ret) => ret.to_lines(indent),
             Self::Throw(throw) => throw.to_lines(indent),
@@ -2605,6 +2764,18 @@ mod tests {
         let expected = DotCall::new(FuncName::Qname(qname), Box::new(target), args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
+    }
+
+    #[test]
+    fn val_to_partial_call_works() {
+        let val = &ap_parse(r#"{type:"partialCall", target:{type:"var", name:"utilsAssert"}, args:[null, {type:"literal", val:1}]}"#).unwrap();
+        let func_name = FuncName::TagName(tn("utilsAssert"));
+        let null = PartialCallArgument::Placeholder;
+        let arg2 = PartialCallArgument::Expr(Expr::Lit(lit_num(1.0)));
+        let expected = PartialCall::new(func_name, vec![null, arg2]);
+
+        let partial_call: PartialCall = val.try_into().unwrap();
+        assert_eq!(partial_call, expected);
     }
 
     #[test]
