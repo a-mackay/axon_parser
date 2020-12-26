@@ -1,6 +1,6 @@
 [package]
 name = "axon_parser"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["A Mackay <opensauceburner@outlook.com>"]
 edition = "2018"
 homepage = "https://github.com/a-mackay/axon_parser"
