@@ -1,7 +1,7 @@
 use axon_parseast_parser as ap;
 use axon_parseast_parser::Val;
 use chrono::{NaiveDate, NaiveTime};
-use raystack_core::{Number, Ref, TagName};
+use raystack_core::{Number, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
@@ -9,7 +9,6 @@ use std::convert::{From, TryFrom, TryInto};
 // defcomp
 // qname
 // _ params like run(_, _)
-// symbol literals ^symbol
 
 macro_rules! impl_try_from_val_ref_for {
     ($type_name:ty, $bin_op:expr) => {
@@ -2127,6 +2126,7 @@ pub enum Lit {
     Num(Number),
     Ref(Ref),
     Str(String),
+    Symbol(Symbol),
     Time(NaiveTime),
     Uri(String),
     YearMonth(YearMonth),
@@ -2142,6 +2142,7 @@ impl Lit {
             Self::Num(n) => number_to_axon_code(n),
             Self::Ref(r) => r.to_axon_code().to_owned(),
             Self::Str(s) => format!("{:?}", s),
+            Self::Symbol(s) => s.to_axon_code().to_owned(),
             Self::Time(t) => t.format("%H:%M:%S").to_string(),
             Self::Uri(s) => format!("`{}`", s),
             Self::YearMonth(ym) => ym.to_axon_code(),
@@ -2179,6 +2180,7 @@ impl TryFrom<&ap::Lit> for Lit {
             ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
             ap::Lit::Ref(reff) => Ok(Lit::Ref(reff.clone())),
             ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
+            ap::Lit::Symbol(symbol) => Ok(Lit::Symbol(symbol.clone())),
             ap::Lit::Time(time) => Ok(Lit::Time(*time)),
             ap::Lit::Uri(uri) => Ok(Lit::Uri(uri.clone())),
             ap::Lit::YearMonth(ym) => Ok(Lit::YearMonth(ym.into())),
@@ -2385,6 +2387,14 @@ mod tests {
     fn val_to_lit_works() {
         let val = &ap_parse(r#"{type:"literal", val:"hello"}"#).unwrap();
         let expected = Lit::Str("hello".to_owned());
+        let lit: Lit = val.try_into().unwrap();
+        assert_eq!(lit, expected);
+    }
+
+    #[test]
+    fn val_to_lit_symbol_works() {
+        let val = &ap_parse(r#"{type:"literal", val:^steam-boiler}"#).unwrap();
+        let expected = Lit::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
         let lit: Lit = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
