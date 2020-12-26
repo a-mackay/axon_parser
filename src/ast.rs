@@ -5,8 +5,8 @@ use raystack_core::{Number, Qname, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// TODO later
-// defcomp
+// TODO later:
+// defcomps don't seem to work in parseAst
 
 macro_rules! impl_try_from_val_ref_for {
     ($type_name:ty, $bin_op:expr) => {
