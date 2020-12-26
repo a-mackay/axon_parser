@@ -495,7 +495,10 @@ pub struct FlatIf {
 }
 
 impl FlatIf {
-    pub fn new(cond_exprs: Vec<ConditionalExpr>, else_expr: Option<Expr>) -> Self {
+    pub fn new(
+        cond_exprs: Vec<ConditionalExpr>,
+        else_expr: Option<Expr>,
+    ) -> Self {
         Self {
             cond_exprs,
             else_expr,
@@ -777,7 +780,11 @@ pub struct DotCall {
 
 impl DotCall {
     pub fn new(func_name: String, target: Box<Expr>, args: Vec<Expr>) -> Self {
-        Self { func_name, target, args }
+        Self {
+            func_name,
+            target,
+            args,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -790,12 +797,15 @@ impl DotCall {
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
         let mut lines = self.target.to_lines(indent);
-        let last_target_line = lines.last().expect("DotCall target should contain at least one line");
+        let last_target_line = lines
+            .last()
+            .expect("DotCall target should contain at least one line");
 
         let args = &self.args;
 
         if args.is_empty() {
-            let new_last_target_line = last_target_line.suffix_str(&format!(".{}()", self.func_name));
+            let new_last_target_line =
+                last_target_line.suffix_str(&format!(".{}()", self.func_name));
             lines.pop();
             lines.push(new_last_target_line);
         } else {
@@ -805,7 +815,10 @@ impl DotCall {
                 .expect("DotCall args should contain at least one line");
             let first_arg_line_str = first_arg_line.inner_str();
 
-            let new_last_target_line = last_target_line.suffix_str(&format!(".{}{}", self.func_name, first_arg_line_str));
+            let new_last_target_line = last_target_line.suffix_str(&format!(
+                ".{}{}",
+                self.func_name, first_arg_line_str
+            ));
             lines.pop();
             lines.push(new_last_target_line);
 
@@ -1145,7 +1158,11 @@ fn comma_separated_exprs_line(exprs: &[Expr], indent: &Indent) -> Line {
     separated_exprs_line(exprs, indent, ", ")
 }
 
-fn separated_exprs_line(exprs: &[Expr], indent: &Indent, separator: &str) -> Line {
+fn separated_exprs_line(
+    exprs: &[Expr],
+    indent: &Indent,
+    separator: &str,
+) -> Line {
     let zero_indent = zero_indent();
     let expr_lines = exprs
         .iter()
@@ -1509,7 +1526,9 @@ impl List {
 
             for expr in &self.vals {
                 let mut expr_lines = expr.to_lines(&next_indent);
-                let last_expr_line = expr_lines.last().expect("List expressions should contain at least one line");
+                let last_expr_line = expr_lines.last().expect(
+                    "List expressions should contain at least one line",
+                );
                 let new_last_expr_line = last_expr_line.suffix_str(",");
                 expr_lines.pop();
                 expr_lines.push(new_last_expr_line);
@@ -2394,7 +2413,8 @@ mod tests {
     #[test]
     fn val_to_lit_symbol_works() {
         let val = &ap_parse(r#"{type:"literal", val:^steam-boiler}"#).unwrap();
-        let expected = Lit::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
+        let expected =
+            Lit::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
         let lit: Lit = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
