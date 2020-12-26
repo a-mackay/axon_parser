@@ -1,13 +1,12 @@
 use axon_parseast_parser as ap;
 use axon_parseast_parser::Val;
 use chrono::{NaiveDate, NaiveTime};
-use raystack_core::{Number, Ref, Symbol, TagName};
+use raystack_core::{Number, Qname, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
 // TODO later
 // defcomp
-// qname
 // _ params like run(_, _)
 
 macro_rules! impl_try_from_val_ref_for {
@@ -773,13 +772,13 @@ impl TryFrom<&Val> for TrapCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
-    pub func_name: String,
+    pub func_name: FuncName,
     pub target: Box<Expr>,
     pub args: Vec<Expr>,
 }
 
 impl DotCall {
-    pub fn new(func_name: String, target: Box<Expr>, args: Vec<Expr>) -> Self {
+    pub fn new(func_name: FuncName, target: Box<Expr>, args: Vec<Expr>) -> Self {
         Self {
             func_name,
             target,
@@ -859,7 +858,12 @@ impl TryFrom<&Val> for DotCall {
 
                 let target = exprs.remove(0);
 
-                Ok(Self::new(func_name, Box::new(target), exprs))
+                if let Some(func_name) = TagName::new(func_name.clone()) {
+                    Ok(Self::new(FuncName::TagName(func_name), Box::new(target), exprs))
+                } else {
+                    let qname = Qname::new(func_name);
+                    Ok(Self::new(FuncName::Qname(qname), Box::new(target), exprs))
+                }
             }
             _ => panic!("expected dotCall 'target' to be a Dict"),
         }
@@ -867,8 +871,23 @@ impl TryFrom<&Val> for DotCall {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum FuncName {
+    TagName(TagName),
+    Qname(Qname),
+}
+
+impl std::fmt::Display for FuncName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TagName(tag_name) => write!(f, "{}", tag_name),
+            Self::Qname(qname) => write!(f, "{}", qname),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Call {
-    pub func_name: String,
+    pub func_name: FuncName,
     pub args: Vec<Expr>,
 }
 
@@ -925,7 +944,7 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
 }
 
 impl Call {
-    pub fn new(func_name: String, args: Vec<Expr>) -> Self {
+    pub fn new(func_name: FuncName, args: Vec<Expr>) -> Self {
         Self { func_name, args }
     }
 
@@ -941,7 +960,8 @@ impl Call {
         let first_arg_line = lines
             .first()
             .expect("Call args should contain at least one line");
-        let new_first_arg_line = first_arg_line.prefix_str(&self.func_name);
+        let func_name = format!("{}", &self.func_name);
+        let new_first_arg_line = first_arg_line.prefix_str(&func_name);
         lines[0] = new_first_arg_line;
         lines
     }
@@ -974,7 +994,13 @@ impl TryFrom<&Val> for Call {
                     exprs.push(expr);
                 }
 
-                Ok(Self::new(func_name, exprs))
+                if let Some(func_name) = TagName::new(func_name.clone()) {
+                    Ok(Self::new(FuncName::TagName(func_name), exprs))
+                } else {
+                    // We assume it's a qname:
+                    let qname = Qname::new(func_name);
+                    Ok(Self::new(FuncName::Qname(qname), exprs))
+                }
             }
             _ => panic!("expected call 'target' to be a Dict"),
         }
@@ -2373,7 +2399,7 @@ impl From<ap::Month> for Month {
 mod tests {
     use super::*;
     use axon_parseast_parser::parse as ap_parse;
-    use raystack_core::Number;
+    use raystack_core::{Number, Qname};
     use std::convert::TryInto;
 
     fn lit_str(s: &str) -> Lit {
@@ -2540,10 +2566,21 @@ mod tests {
     #[test]
     fn val_to_simple_call_works() {
         let val = &ap_parse(r#"{type:"call", target:{type:"var", name:"readAll"}, args:[{type:"literal", val:1}]}"#).unwrap();
-        let func_name = "readAll".to_owned();
+        let func_name = tn("readAll");
         let arg = Expr::Lit(lit_num(1.0));
         let args = vec![arg];
-        let expected = Call::new(func_name, args);
+        let expected = Call::new(FuncName::TagName(func_name), args);
+        let call: Call = val.try_into().unwrap();
+        assert_eq!(call, expected);
+    }
+
+    #[test]
+    fn val_to_qname_call_works() {
+        let val = &ap_parse(r#"{type:"call", target:{type:"var", name:"core::readAll"}, args:[{type:"literal", val:1}]}"#).unwrap();
+        let qname = Qname::new("core::readAll".to_owned());
+        let arg = Expr::Lit(lit_num(1.0));
+        let args = vec![arg];
+        let expected = Call::new(FuncName::Qname(qname), args);
         let call: Call = val.try_into().unwrap();
         assert_eq!(call, expected);
     }
@@ -2551,10 +2588,21 @@ mod tests {
     #[test]
     fn val_to_simple_dot_call_works() {
         let val = &ap_parse(r#"{type:"dotCall", target:{type:"var", name:"parseNumber"}, args:[{type:"literal", val:1}]}"#).unwrap();
-        let func_name = "parseNumber".to_owned();
+        let func_name = tn("parseNumber");
         let target = Expr::Lit(lit_num(1.0));
         let args = vec![];
-        let expected = DotCall::new(func_name, Box::new(target), args);
+        let expected = DotCall::new(FuncName::TagName(func_name), Box::new(target), args);
+        let dot_call: DotCall = val.try_into().unwrap();
+        assert_eq!(dot_call, expected);
+    }
+
+    #[test]
+    fn val_to_qname_dot_call_works() {
+        let val = &ap_parse(r#"{type:"dotCall", target:{type:"var", name:"core::parseNumber"}, args:[{type:"literal", val:1}]}"#).unwrap();
+        let qname = Qname::new("core::parseNumber".to_owned());
+        let target = Expr::Lit(lit_num(1.0));
+        let args = vec![];
+        let expected = DotCall::new(FuncName::Qname(qname), Box::new(target), args);
         let dot_call: DotCall = val.try_into().unwrap();
         assert_eq!(dot_call, expected);
     }
