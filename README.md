@@ -7,10 +7,6 @@ Parses the output of SkySpark's `toAxonCode(parseAst( ... ))` into an abstract s
 * Parse an AST representing a Axon func.
 * Code formatting
 
-## Limitations and Missing Features
-
-* Some parsing limitations detailed in the [axon_parseast_parser repository](https://github.com/a-mackay/axon_parseast_parser)
-
 ## Code Formatting
 
 The code formatting is basic and opinionated, and strays from idiomatic Axon code to

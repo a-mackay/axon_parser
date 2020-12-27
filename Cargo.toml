@@ -13,6 +13,6 @@ license = "MIT"
 
 [dependencies]
 chrono = "0.4"
-axon_parseast_parser = "0.5"
-raystack_core = "0.2"
+axon_parseast_parser = "0.6"
+raystack_core = "0.3"
 thiserror = "1.0"
