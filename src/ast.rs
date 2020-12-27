@@ -2365,7 +2365,7 @@ impl Lit {
             Self::Ref(r) => r.to_axon_code().to_owned(),
             Self::Str(s) => format!("{:?}", s),
             Self::Symbol(s) => s.to_axon_code().to_owned(),
-            Self::Time(t) => t.format("%H:%M:%S").to_string(),
+            Self::Time(t) => t.format("%H:%M:%S%.f").to_string(),
             Self::Uri(s) => format!("`{}`", s),
             Self::YearMonth(ym) => ym.to_axon_code(),
         }
