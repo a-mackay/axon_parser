@@ -2145,6 +2145,11 @@ impl TryFrom<&Val> for Expr {
             return Ok(Expr::Not(Box::new(not)));
         }
 
+        let partial_call: Option<PartialCall> = val.try_into().ok();
+        if let Some(partial_call) = partial_call {
+            return Ok(Expr::PartialCall(partial_call));
+        }
+
         Err(())
     }
 }
