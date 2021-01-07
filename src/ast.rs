@@ -896,6 +896,17 @@ impl std::fmt::Display for FuncName {
     }
 }
 
+impl FuncName {
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        let s = format!("{}", self);
+        Line::new(indent.clone(), s)
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        vec![self.to_line(indent)]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PartialCallArgument {
     Expr(Expr),
@@ -1060,8 +1071,30 @@ fn partial_call_arg_exprs_to_lines(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
-    pub func_name: FuncName,
+    pub target: CallTarget,
     pub args: Vec<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallTarget {
+    Expr(Box<Expr>),
+    FuncName(FuncName),
+}
+
+impl CallTarget {
+    pub fn to_line(&self, indent: &Indent) -> Line {
+        match self {
+            Self::Expr(expr) => expr.to_line(indent),
+            Self::FuncName(func_name) => func_name.to_line(indent),
+        }
+    }
+
+    pub fn to_lines(&self, indent: &Indent) -> Lines {
+        match self {
+            Self::Expr(expr) => expr.to_lines(indent),
+            Self::FuncName(func_name) => func_name.to_lines(indent),
+        }
+    }
 }
 
 /// Converts expressions, which represent arguments to a function, into a `Line`.
@@ -1117,14 +1150,15 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
 }
 
 impl Call {
-    pub fn new(func_name: FuncName, args: Vec<Expr>) -> Self {
-        Self { func_name, args }
+    pub fn new(target: CallTarget, args: Vec<Expr>) -> Self {
+        Self { target, args }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
         let args_line = arg_exprs_to_line(&self.args, indent);
+        let zero_indent = zero_indent();
         args_line
-            .prefix_str(&format!("{}(", self.func_name))
+            .prefix_str(&format!("{}(", self.target.to_line(&zero_indent).inner_str()))
             .suffix_str(")")
     }
 
@@ -1133,8 +1167,9 @@ impl Call {
         let first_arg_line = lines
             .first()
             .expect("Call args should contain at least one line");
-        let func_name = format!("{}", &self.func_name);
-        let new_first_arg_line = first_arg_line.prefix_str(&func_name);
+        let zero_indent = zero_indent();
+        let first_line_prefix = format!("{}", &self.target.to_line(&zero_indent));
+        let new_first_arg_line = first_arg_line.prefix_str(&first_line_prefix);
         lines[0] = new_first_arg_line;
         lines
     }
@@ -1147,36 +1182,44 @@ impl TryFrom<&Val> for Call {
         let hash_map = map_for_type(val, "call").map_err(|_| ())?;
         let target =
             get_val(hash_map, "target").expect("call should have 'target' tag");
-        match target {
+        let target: CallTarget = match target {
             Val::Dict(target_hash_map) => {
-                let func_name = get_literal_str(target_hash_map, "name")
-                    .expect("call 'target' should have 'name' string tag");
-                let func_name = func_name.to_owned();
-                let args = get_vals(hash_map, "args")
-                    .expect("call should have 'args' tag");
+                if let Some(func_name) = get_literal_str(target_hash_map, "name") {
+                    let func_name = func_name.to_owned();
 
-                let mut exprs = vec![];
-
-                for arg in args {
-                    let expr = arg.try_into().unwrap_or_else(|_| {
-                        panic!(
-                            "call arg could not be parsed as an Expr: {:?}",
-                            arg
-                        )
-                    });
-                    exprs.push(expr);
-                }
-
-                if let Some(func_name) = TagName::new(func_name.clone()) {
-                    Ok(Self::new(FuncName::TagName(func_name), exprs))
+                    if let Some(func_name) = TagName::new(func_name.clone()) {
+                        let func_name = FuncName::TagName(func_name);
+                        CallTarget::FuncName(func_name)
+                    } else {
+                        // We assume it's a qname:
+                        let qname = Qname::new(func_name);
+                        let func_name = FuncName::Qname(qname);
+                        CallTarget::FuncName(func_name)
+                    }
                 } else {
-                    // We assume it's a qname:
-                    let qname = Qname::new(func_name);
-                    Ok(Self::new(FuncName::Qname(qname), exprs))
+                    let expr = target.try_into().unwrap_or_else(|_| panic!("if call target is not a func name, it should be an expression: {:#?}", target));
+                    CallTarget::Expr(Box::new(expr))
                 }
             }
             _ => panic!("expected call 'target' to be a Dict"),
+        };
+
+        let args = get_vals(hash_map, "args")
+        .expect("call should have 'args' tag");
+
+        let mut exprs = vec![];
+
+        for arg in args {
+            let expr = arg.try_into().unwrap_or_else(|_| {
+                panic!(
+                    "call arg could not be parsed as an Expr: {:?}",
+                    arg
+                )
+            });
+            exprs.push(expr);
         }
+
+        Ok(Self::new(target, exprs))
     }
 }
 
@@ -2751,7 +2794,9 @@ mod tests {
         let func_name = tn("readAll");
         let arg = Expr::Lit(lit_num(1.0));
         let args = vec![arg];
-        let expected = Call::new(FuncName::TagName(func_name), args);
+        let func_name = FuncName::TagName(func_name);
+        let target = CallTarget::FuncName(func_name);
+        let expected = Call::new(target, args);
         let call: Call = val.try_into().unwrap();
         assert_eq!(call, expected);
     }
@@ -2762,7 +2807,22 @@ mod tests {
         let qname = Qname::new("core::readAll".to_owned());
         let arg = Expr::Lit(lit_num(1.0));
         let args = vec![arg];
-        let expected = Call::new(FuncName::Qname(qname), args);
+        let func_name = FuncName::Qname(qname);
+        let target = CallTarget::FuncName(func_name);
+        let expected = Call::new(target, args);
+        let call: Call = val.try_into().unwrap();
+        assert_eq!(call, expected);
+    }
+
+    #[test]
+    fn val_to_expr_call_works() {
+        let val = &ap_parse(r#"{type:"call", target:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"someFunc"}]}, args:[]}"#).unwrap();
+        let var_expr = Expr::Id(tn("x"));
+        let trap_call = TrapCall::new(var_expr, "someFunc".to_owned());
+        let target = Expr::TrapCall(Box::new(trap_call));
+        let target = CallTarget::Expr(Box::new(target));
+        let args = vec![];
+        let expected = Call::new(target, args);
         let call: Call = val.try_into().unwrap();
         assert_eq!(call, expected);
     }
