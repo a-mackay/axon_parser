@@ -1,0 +1,1 @@
+{type:"func", params:[], body:{type:"block", exprs:[{type:"call", target:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"someFunc"}]}, args:[]}]}}

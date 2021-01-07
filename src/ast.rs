@@ -3020,6 +3020,14 @@ mod tests {
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
+
+    #[test]
+    fn trap_a_func_works() {
+        let val =
+            &ap_parse(include_str!("../test_input/trap_a_func.txt")).unwrap();
+        let func: Func = val.try_into().unwrap();
+        println!("{:#?}", func);
+    }
 }
 
 #[cfg(test)]
