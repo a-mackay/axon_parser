@@ -3007,6 +3007,14 @@ mod tests {
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
+
+    #[test]
+    fn partial_call_works() {
+        let val =
+            &ap_parse(include_str!("../test_input/partial_call.txt")).unwrap();
+        let func: Func = val.try_into().unwrap();
+        println!("{:#?}", func);
+    }
 }
 
 #[cfg(test)]

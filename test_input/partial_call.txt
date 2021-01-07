@@ -1,0 +1,1 @@
+{type:"func", params:[], body:{type:"block", exprs:[{type:"dotCall", target:{type:"var", name:"hisFindPeriods"}, args:[{type:"call", target:{type:"var", name:"hisRead"}, args:[{type:"var", name:"x"}, {type:"var", name:"y"}]}, {type:"partialCall", target:{type:"var", name:"matchPointVal"}, args:[null, {type:"literal", val:false}]}]}]}}
