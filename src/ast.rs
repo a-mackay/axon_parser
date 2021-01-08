@@ -800,10 +800,16 @@ impl DotCall {
                 if tag_name == "get" {
                     line.suffix_str(&format!("[{}]", trailing_args_str))
                 } else {
-                    line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+                    line.suffix_str(&format!(
+                        ".{}({})",
+                        self.func_name, trailing_args_str
+                    ))
                 }
-            },
-            _ => line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+            }
+            _ => line.suffix_str(&format!(
+                ".{}({})",
+                self.func_name, trailing_args_str
+            )),
         }
     }
 
@@ -819,8 +825,8 @@ impl DotCall {
             FuncName::TagName(tag_name) => {
                 let tag_name: &str = tag_name.as_ref();
                 tag_name == "get"
-            },
-            _ => false
+            }
+            _ => false,
         };
 
         if args.is_empty() {
@@ -834,10 +840,8 @@ impl DotCall {
             let only_arg_line = only_arg.to_line(&zero_indent);
             let only_arg_str = only_arg_line.inner_str();
 
-            let new_last_target_line = last_target_line.suffix_str(&format!(
-                "[{}]",
-                only_arg_str
-            ));
+            let new_last_target_line =
+                last_target_line.suffix_str(&format!("[{}]", only_arg_str));
             lines.pop();
             lines.push(new_last_target_line);
         } else {
@@ -1001,12 +1005,14 @@ impl TryFrom<&Val> for PartialCall {
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
         let hash_map = map_for_type(val, "partialCall").map_err(|_| ())?;
-        let target =
-            get_val(hash_map, "target").expect("partialCall should have 'target' tag");
+        let target = get_val(hash_map, "target")
+            .expect("partialCall should have 'target' tag");
         match target {
             Val::Dict(target_hash_map) => {
                 let func_name = get_literal_str(target_hash_map, "name")
-                    .expect("partialCall 'target' should have 'name' string tag");
+                    .expect(
+                        "partialCall 'target' should have 'name' string tag",
+                    );
                 let func_name = func_name.to_owned();
                 let args = get_vals(hash_map, "args")
                     .expect("partialCall should have 'args' tag");
@@ -1188,7 +1194,10 @@ impl Call {
         let args_line = arg_exprs_to_line(&self.args, indent);
         let zero_indent = zero_indent();
         args_line
-            .prefix_str(&format!("{}(", self.target.to_line(&zero_indent).inner_str()))
+            .prefix_str(&format!(
+                "{}(",
+                self.target.to_line(&zero_indent).inner_str()
+            ))
             .suffix_str(")")
     }
 
@@ -1198,7 +1207,8 @@ impl Call {
             .first()
             .expect("Call args should contain at least one line");
         let zero_indent = zero_indent();
-        let first_line_prefix = format!("{}", &self.target.to_line(&zero_indent));
+        let first_line_prefix =
+            format!("{}", &self.target.to_line(&zero_indent));
         let new_first_arg_line = first_arg_line.prefix_str(&first_line_prefix);
         lines[0] = new_first_arg_line;
         lines
@@ -1214,7 +1224,9 @@ impl TryFrom<&Val> for Call {
             get_val(hash_map, "target").expect("call should have 'target' tag");
         let target: CallTarget = match target {
             Val::Dict(target_hash_map) => {
-                if let Some(func_name) = get_literal_str(target_hash_map, "name") {
+                if let Some(func_name) =
+                    get_literal_str(target_hash_map, "name")
+                {
                     let func_name = func_name.to_owned();
 
                     if let Some(func_name) = TagName::new(func_name.clone()) {
@@ -1234,17 +1246,14 @@ impl TryFrom<&Val> for Call {
             _ => panic!("expected call 'target' to be a Dict"),
         };
 
-        let args = get_vals(hash_map, "args")
-        .expect("call should have 'args' tag");
+        let args =
+            get_vals(hash_map, "args").expect("call should have 'args' tag");
 
         let mut exprs = vec![];
 
         for arg in args {
             let expr = arg.try_into().unwrap_or_else(|_| {
-                panic!(
-                    "call arg could not be parsed as an Expr: {:?}",
-                    arg
-                )
+                panic!("call arg could not be parsed as an Expr: {:?}", arg)
             });
             exprs.push(expr);
         }
