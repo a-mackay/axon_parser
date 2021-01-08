@@ -794,7 +794,17 @@ impl DotCall {
         let zero_indent = zero_indent();
         let trailing_line = arg_exprs_to_line(&self.args, &zero_indent);
         let trailing_args_str = trailing_line.inner_str();
-        line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+        match &self.func_name {
+            FuncName::TagName(tag_name) => {
+                let tag_name: &str = tag_name.as_ref();
+                if tag_name == "get" {
+                    line.suffix_str(&format!("[{}]", trailing_args_str))
+                } else {
+                    line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+                }
+            },
+            _ => line.suffix_str(&format!(".{}({})", self.func_name, trailing_args_str))
+        }
     }
 
     pub fn to_lines(&self, indent: &Indent) -> Lines {
@@ -805,9 +815,29 @@ impl DotCall {
 
         let args = &self.args;
 
+        let is_get = match &self.func_name {
+            FuncName::TagName(tag_name) => {
+                let tag_name: &str = tag_name.as_ref();
+                tag_name == "get"
+            },
+            _ => false
+        };
+
         if args.is_empty() {
             let new_last_target_line =
                 last_target_line.suffix_str(&format!(".{}()", self.func_name));
+            lines.pop();
+            lines.push(new_last_target_line);
+        } else if is_get && args.len() == 1 {
+            let only_arg = args.first().unwrap();
+            let zero_indent = zero_indent();
+            let only_arg_line = only_arg.to_line(&zero_indent);
+            let only_arg_str = only_arg_line.inner_str();
+
+            let new_last_target_line = last_target_line.suffix_str(&format!(
+                "[{}]",
+                only_arg_str
+            ));
             lines.pop();
             lines.push(new_last_target_line);
         } else {
@@ -3381,5 +3411,26 @@ mod format_tests {
 
         assert_eq!(lines[0], "utilsAssert(_, 1)");
         assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn get_single_line_works() {
+        let axon = r#"{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"dict", names:["x"], vals:[{type:"literal", val:0}]}, {type:"literal", val:"x"}]}"#;
+        let val = &axon_parseast_parser::parse(axon).unwrap();
+        let dot_call: DotCall = val.try_into().unwrap();
+        let line = dot_call.to_line(&zero_ind());
+        let line = format!("{}", line);
+        assert_eq!(line, "{x: 0}[\"x\"]");
+    }
+
+    #[test]
+    fn get_multi_target_line_works() {
+        let axon = r#"{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"dict", names:["x"], vals:[{type:"literal", val:0}]}, {type:"literal", val:"x"}]}"#;
+        let val = &axon_parseast_parser::parse(axon).unwrap();
+        let dot_call: DotCall = val.try_into().unwrap();
+        let lines = stringify(&dot_call.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "{");
+        assert_eq!(lines[1], "    x: 0,");
+        assert_eq!(lines[2], "}[\"x\"]");
     }
 }
