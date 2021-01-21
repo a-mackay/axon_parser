@@ -1516,6 +1516,7 @@ impl Dict {
             let entry = format!("{}: {}", tag_name, line.inner_str());
             entries.push(entry);
         }
+        entries.sort();
         let entries_str = entries.join(", ");
         Line::new(indent.clone(), format!("{{{}}}", entries_str))
     }
@@ -1530,7 +1531,9 @@ impl Dict {
 
             let next_indent = indent.increase();
 
-            for (tag_name, expr) in &self.map {
+            let sorted_entries = sorted_dict_entries(self.map.clone());
+
+            for (tag_name, expr) in sorted_entries {
                 let mut dict_val_lines = expr.to_lines(&next_indent);
                 let first_dict_val_line = dict_val_lines
                     .first()
@@ -1552,6 +1555,12 @@ impl Dict {
             lines
         }
     }
+}
+
+fn sorted_dict_entries(dict: HashMap<TagName, DictVal>) -> Vec<(TagName, DictVal)> {
+    let mut entries: Vec<(TagName, DictVal)> = dict.into_iter().collect();
+    entries.sort_by(|(t1, _), (t2, _)| t1.clone().into_string().cmp(&t2.clone().into_string()));
+    entries
 }
 
 impl TryFrom<&Val> for Dict {
@@ -3217,6 +3226,39 @@ mod format_tests {
         assert!(lines.contains(&"    c: removeMarker(),".to_owned()));
         assert_eq!(lines[4], "}");
         assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn multi_line_dict_entries_get_sorted_works() {
+        let item1 = DictVal::Expr(lit_num_expr(1.0));
+        let item2 = DictVal::Marker;
+        let item3 = DictVal::RemoveMarker;
+        let mut hash_map = HashMap::new();
+        hash_map.insert(tn("c"), item1);
+        hash_map.insert(tn("b"), item2);
+        hash_map.insert(tn("a"), item3);
+        let dict = Dict::new(hash_map);
+        let lines = stringify(&dict.to_lines(&zero_ind()));
+        assert_eq!(lines[0], "{");
+        assert!(lines.contains(&"    a: removeMarker(),".to_owned()));
+        assert!(lines.contains(&"    b: marker(),".to_owned()));
+        assert!(lines.contains(&"    c: 1,".to_owned()));
+        assert_eq!(lines[4], "}");
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn single_line_dict_entries_get_sorted_works() {
+        let item1 = DictVal::Expr(lit_num_expr(1.0));
+        let item2 = DictVal::Marker;
+        let item3 = DictVal::RemoveMarker;
+        let mut hash_map = HashMap::new();
+        hash_map.insert(tn("c"), item1);
+        hash_map.insert(tn("b"), item2);
+        hash_map.insert(tn("a"), item3);
+        let dict = Dict::new(hash_map);
+        let line = format!("{}", &dict.to_line(&zero_ind()));
+        assert_eq!(line, "{a: removeMarker(), b: marker(), c: 1}");
     }
 
     #[test]
