@@ -2459,7 +2459,7 @@ impl Lit {
             Self::Null => "null".to_owned(),
             Self::Num(n) => number_to_axon_code(n),
             Self::Ref(r) => r.to_axon_code().to_owned(),
-            Self::Str(s) => format!(r#""{}""#, s),
+            Self::Str(s) => format!("{:?}", s).replace(r"\\$", r"\$"),
             Self::Symbol(s) => s.to_axon_code().to_owned(),
             Self::Time(t) => t.format("%H:%M:%S%.f").to_string(),
             Self::Uri(s) => format!("`{}`", s),
@@ -3336,18 +3336,13 @@ mod format_tests {
     }
 
     #[test]
-    fn escaped_chars_in_str_literal_work() {
-        let lit = lit_str_expr(r#"\$"#);
-        let lines = stringify(&lit.to_lines(&zero_ind()));
-        assert_eq!(lines[0], r#""\$""#);
+    fn escaped_chars_work() {
+        let val = &ap_parse(r#"{type:"literal", val:"Hello\nWorld\t!\$ \\"}"#).unwrap();
+        let expr: Expr = val.try_into().unwrap();
 
-        let lit = lit_str_expr(r#"\t"#);
-        let lines = stringify(&lit.to_lines(&zero_ind()));
-        assert_eq!(lines[0], r#""\t""#);
-
-        let lit = lit_str_expr(r#"\n"#);
-        let lines = stringify(&lit.to_lines(&zero_ind()));
-        assert_eq!(lines[0], r#""\n""#);
+        let lines = stringify(&expr.to_lines(&zero_ind()));
+        let expected = r#""Hello\nWorld\t!\$ \\""#;
+        assert_eq!(lines[0], expected);
     }
 
     #[test]
