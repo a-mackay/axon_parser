@@ -192,12 +192,18 @@ pub struct Or(BinOp);
 impl_try_from_val_ref_for!(Or, BinOpId::Or);
 impl_line_and_lines_for!(Or, BinOpId::Or);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BinOp {
     id: Uuid,
     pub lhs: Expr,
     pub bin_op_id: BinOpId,
     pub rhs: Expr,
+}
+
+impl PartialEq for BinOp {
+    fn eq(&self, other: &Self) -> bool {
+        self.lhs == other.lhs && self.bin_op_id == other.bin_op_id && self.rhs == other.rhs
+    }
 }
 
 impl BinOp {
@@ -395,10 +401,16 @@ impl std::fmt::Display for Line {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Neg {
     id: Uuid,
     pub operand: Expr,
+}
+
+impl PartialEq for Neg {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand
+    }
 }
 
 impl Neg {
@@ -438,12 +450,18 @@ impl TryFrom<&Val> for Neg {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TryCatch {
     id: Uuid,
     pub try_expr: Expr,
     pub exception_name: Option<String>,
     pub catch_expr: Expr,
+}
+
+impl PartialEq for TryCatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.try_expr == other.try_expr && self.exception_name == other.exception_name && self.catch_expr == other.catch_expr
+    }
 }
 
 impl TryCatch {
@@ -556,11 +574,17 @@ impl TryFrom<&Val> for TryCatch {
 
 /// Represents a chunk of code containing multiple nested
 /// if / else if / ... / else expressions.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FlatIf {
     id: Uuid,
     pub cond_exprs: Vec<ConditionalExpr>,
     pub else_expr: Option<Expr>,
+}
+
+impl PartialEq for FlatIf {
+    fn eq(&self, other: &Self) -> bool {
+        self.cond_exprs == other.cond_exprs && self.else_expr == other.else_expr
+    }
 }
 
 impl FlatIf {
@@ -649,13 +673,19 @@ impl FlatIf {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ConditionalExpr {
     id: Uuid,
     /// The conditional expression, for example x == true
     pub cond: Expr,
     /// The expression that gets executed if the condition is true
     pub expr: Expr,
+}
+
+impl PartialEq for ConditionalExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.cond == other.cond && self.expr == other.expr
+    }
 }
 
 impl ConditionalExpr {
@@ -697,12 +727,18 @@ impl ConditionalExpr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct If {
     id: Uuid,
     pub cond: Expr,
     pub if_expr: Expr,
     pub else_expr: Option<Expr>,
+}
+
+impl PartialEq for If {
+    fn eq(&self, other: &Self) -> bool {
+        self.cond == other.cond && self.if_expr == other.if_expr && self.else_expr == other.else_expr
+    }
 }
 
 impl If {
@@ -775,11 +811,17 @@ impl TryFrom<&Val> for If {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TrapCall {
     id: Uuid,
     pub target: Expr,
     pub key: String,
+}
+
+impl PartialEq for TrapCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.target == other.target && self.key == other.key
+    }
 }
 
 impl TrapCall {
@@ -839,12 +881,18 @@ impl TryFrom<&Val> for TrapCall {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DotCall {
     id: Uuid,
     pub func_name: FuncName,
     pub target: Box<Expr>,
     pub args: Vec<Expr>,
+}
+
+impl PartialEq for DotCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.func_name == other.func_name && self.target == other.target && self.args == other.args
+    }
 }
 
 impl DotCall {
@@ -1042,11 +1090,17 @@ impl PartialCallArgument {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PartialCall {
     id: Uuid,
     pub func_name: FuncName,
     pub args: Vec<PartialCallArgument>,
+}
+
+impl PartialEq for PartialCall {
+    fn eq(&self, other: &Self) -> bool {
+        self.func_name == other.func_name && self.args == other.args
+    }
 }
 
 impl PartialCall {
@@ -1178,11 +1232,17 @@ fn partial_call_arg_exprs_to_lines(
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Call {
     id: Uuid,
     pub target: CallTarget,
     pub args: Vec<Expr>,
+}
+
+impl PartialEq for Call {
+    fn eq(&self, other: &Self) -> bool {
+        self.target == other.target && self.args == other.args
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1336,10 +1396,16 @@ impl TryFrom<&Val> for Call {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Not {
     id: Uuid,
     pub operand: Expr,
+}
+
+impl PartialEq for Not {
+    fn eq(&self, other: &Self) -> bool {
+        self.operand == other.operand
+    }
 }
 
 impl Not {
@@ -1383,11 +1449,17 @@ impl TryFrom<&Val> for Not {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Range {
     id: Uuid,
     pub start: Expr,
     pub end: Expr,
+}
+
+impl PartialEq for Range {
+    fn eq(&self, other: &Self) -> bool {
+        self.start == other.start && self.end == other.end
+    }
 }
 
 impl Range {
@@ -1427,11 +1499,17 @@ impl TryFrom<&Val> for Range {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Func {
     id: Uuid,
     pub params: Vec<Param>,
     pub body: Expr,
+}
+
+impl PartialEq for Func {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.body == other.body
+    }
 }
 
 impl Func {
@@ -1499,10 +1577,15 @@ impl TryFrom<&Val> for Func {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Block {
     id: Uuid,
     pub exprs: Vec<Expr>,
+}
+impl PartialEq for Block {
+fn eq(&self, other: &Self) -> bool {
+    self.exprs == other.exprs
+}
 }
 
 fn zero_indent() -> Indent {
@@ -1576,10 +1659,16 @@ impl TryFrom<&Val> for Block {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Dict {
     id: Uuid,
     pub map: HashMap<TagName, DictVal>,
+}
+
+impl PartialEq for Dict {
+    fn eq(&self, other: &Self) -> bool {
+        self.map == other.map
+    }
 }
 
 impl Dict {
@@ -1788,10 +1877,16 @@ impl DictVal {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Return {
     id: Uuid,
     pub expr: Expr,
+}
+
+impl PartialEq for Return {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
 }
 
 impl Return {
@@ -1831,10 +1926,16 @@ impl TryFrom<&Val> for Return {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Throw {
     id: Uuid,
     pub expr: Expr,
+}
+
+impl PartialEq for Throw {
+    fn eq(&self, other: &Self) -> bool {
+        self.expr == other.expr
+    }
 }
 
 impl Throw {
@@ -1874,10 +1975,16 @@ impl TryFrom<&Val> for Throw {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct List {
     id: Uuid,
     pub vals: Vec<Expr>,
+}
+
+impl PartialEq for List {
+    fn eq(&self, other: &Self) -> bool {
+        self.vals == other.vals
+    }
 }
 
 impl List {
@@ -1934,10 +2041,16 @@ impl TryFrom<&Val> for List {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Id {
     id: Uuid,
     name: TagName,
+}
+
+impl PartialEq for Id {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 impl Id {
@@ -2438,13 +2551,19 @@ fn var_val_to_tag_name(val: &Val) -> Option<TagName> {
     Some(tag_name)
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Assign {
     id: Uuid,
     /// lhs
     pub name: TagName,
     /// rhs
     pub expr: Box<Expr>,
+}
+
+impl PartialEq for Assign {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.expr == other.expr
+    }
 }
 
 impl Assign {
@@ -2491,11 +2610,17 @@ impl TryFrom<&Val> for Assign {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Def {
     id: Uuid,
     pub name: TagName,
     pub expr: Box<Expr>,
+}
+
+impl PartialEq for Def {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.expr == other.expr
+    }
 }
 
 impl Def {
@@ -2618,10 +2743,16 @@ impl TryFrom<&ap::Val> for Param {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Lit {
     id: Uuid,
     lit: LitInner,
+}
+
+impl PartialEq for Lit {
+    fn eq(&self, other: &Self) -> bool {
+        self.lit == other.lit
+    }
 }
 
 impl Lit {
