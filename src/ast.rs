@@ -736,14 +736,10 @@ impl TryFrom<&Val> for If {
                 if_val
             )
         });
-        let else_expr = match else_val {
-            Some(else_val) => Some(
-                else_val
-                    .try_into()
-                    .expect("if 'elseExpr' could not be parsed as an Expr"),
-            ),
-            None => None,
-        };
+        let else_expr = else_val.map(|val| {
+            val.try_into()
+                .expect("if 'elseExpr' could not be parsed as an Expr")
+        });
 
         Ok(Self::new(cond_expr, if_expr, else_expr))
     }
@@ -790,10 +786,8 @@ impl TryFrom<&Val> for TrapCall {
 
         assert!(
             args.len() == 2,
-            format!(
-                "trapCall 'args' list should have exactly two elements: {:?}",
-                args
-            )
+            "trapCall 'args' list should have exactly two elements: {:?}",
+            args
         );
         let target = &args[0];
         let key = &args[1];
@@ -1602,9 +1596,13 @@ impl Dict {
     }
 }
 
-fn sorted_dict_entries(dict: HashMap<TagName, DictVal>) -> Vec<(TagName, DictVal)> {
+fn sorted_dict_entries(
+    dict: HashMap<TagName, DictVal>,
+) -> Vec<(TagName, DictVal)> {
     let mut entries: Vec<(TagName, DictVal)> = dict.into_iter().collect();
-    entries.sort_by(|(t1, _), (t2, _)| t1.clone().into_string().cmp(&t2.clone().into_string()));
+    entries.sort_by(|(t1, _), (t2, _)| {
+        t1.clone().into_string().cmp(&t2.clone().into_string())
+    });
     entries
 }
 
@@ -1945,7 +1943,7 @@ pub struct Indent {
 
 impl Indent {
     pub fn new(pattern: String, size: usize) -> Self {
-        Self { size, pattern }
+        Self { pattern, size }
     }
 
     /// Return a new `Indent` with its size equal to the current `Indent`s
@@ -1987,8 +1985,8 @@ impl Expr {
             Self::Sub(sub) => Some(sub.0.precedence()),
             Self::Assign(_) => Some(80),
             Self::Block(_) => None,
-            Self::Call(_) => None,
-            Self::Def(_) => None,
+            Self::Call(_) => Some(1),
+            Self::Def(_) => Some(80),
             Self::Dict(_) => None,
             Self::DotCall(_) => Some(1),
             Self::Func(_) => None,
@@ -1998,11 +1996,11 @@ impl Expr {
             Self::Lit(_) => None,
             Self::Neg(_) => Some(10),
             Self::Not(_) => Some(10),
-            Self::PartialCall(_) => None,
-            Self::Range(_) => None,
+            Self::PartialCall(_) => Some(1),
+            Self::Range(_) => Some(5),
             Self::Return(_) => None,
             Self::Throw(_) => None,
-            Self::TrapCall(_) => None,
+            Self::TrapCall(_) => Some(1),
             Self::TryCatch(_) => None,
         }
     }
@@ -2024,7 +2022,7 @@ impl Expr {
             Self::Sub(sub) => sub.0.associativity(),
             Self::Assign(_) => Some(Associativity::Right),
             Self::Block(_) => None, // Requires explicit parentheses to parse.
-            Self::Call(_) => None, // Requires explicit parentheses to parse.
+            Self::Call(_) => None,  // Requires explicit parentheses to parse.
             Self::Def(_) => Some(Associativity::Right),
             Self::Dict(_) => None,
             Self::DotCall(_) => None, // Sort of left associative, but a.(b.c) will not parse.
@@ -3419,7 +3417,8 @@ mod format_tests {
 
     #[test]
     fn escaped_chars_work() {
-        let val = &ap_parse(r#"{type:"literal", val:"Hello\nWorld\t!\$ \\"}"#).unwrap();
+        let val = &ap_parse(r#"{type:"literal", val:"Hello\nWorld\t!\$ \\"}"#)
+            .unwrap();
         let expr: Expr = val.try_into().unwrap();
 
         let lines = stringify(&expr.to_lines(&zero_ind()));
