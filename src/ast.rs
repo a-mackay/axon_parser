@@ -4,6 +4,23 @@ use chrono::{NaiveDate, NaiveTime};
 use raystack_core::{Number, Qname, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
+use uuid::Uuid;
+
+/// The size of a single block of indentation, the number of spaces (' ').
+const SPACES: usize = 4;
+
+struct Context {
+    /// The parent expression within which this code is nested.
+    parent_expr: Option<Expr>,
+    /// The number of spaces across this code should be.
+    indent: usize,
+    /// The maximum width allowed for this code.
+    max_width: usize,
+}
+
+trait Rewrite {
+    fn rewrite(&self, context: Context) -> Option<String>;
+}
 
 // TODO later:
 // defcomps don't seem to work in parseAst
@@ -177,6 +194,7 @@ impl_line_and_lines_for!(Or, BinOpId::Or);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinOp {
+    id: Uuid,
     pub lhs: Expr,
     pub bin_op_id: BinOpId,
     pub rhs: Expr,
@@ -185,6 +203,7 @@ pub struct BinOp {
 impl BinOp {
     pub fn new(lhs: Expr, bin_op_id: BinOpId, rhs: Expr) -> Self {
         Self {
+            id: Uuid::new_v4(),
             lhs,
             bin_op_id,
             rhs,
@@ -378,12 +397,16 @@ impl std::fmt::Display for Line {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Neg {
+    id: Uuid,
     pub operand: Expr,
 }
 
 impl Neg {
     pub fn new(operand: Expr) -> Neg {
-        Self { operand }
+        Self {
+            id: Uuid::new_v4(),
+            operand
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -417,6 +440,7 @@ impl TryFrom<&Val> for Neg {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TryCatch {
+    id: Uuid,
     pub try_expr: Expr,
     pub exception_name: Option<String>,
     pub catch_expr: Expr,
@@ -429,6 +453,7 @@ impl TryCatch {
         catch_expr: Expr,
     ) -> Self {
         Self {
+            id: Uuid::new_v4(),
             try_expr,
             exception_name,
             catch_expr,
@@ -533,6 +558,7 @@ impl TryFrom<&Val> for TryCatch {
 /// if / else if / ... / else expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatIf {
+    id: Uuid,
     pub cond_exprs: Vec<ConditionalExpr>,
     pub else_expr: Option<Expr>,
 }
@@ -543,6 +569,7 @@ impl FlatIf {
         else_expr: Option<Expr>,
     ) -> Self {
         Self {
+            id: Uuid::new_v4(),
             cond_exprs,
             else_expr,
         }
@@ -624,6 +651,7 @@ impl FlatIf {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalExpr {
+    id: Uuid,
     /// The conditional expression, for example x == true
     pub cond: Expr,
     /// The expression that gets executed if the condition is true
@@ -632,7 +660,7 @@ pub struct ConditionalExpr {
 
 impl ConditionalExpr {
     pub fn new(cond: Expr, expr: Expr) -> Self {
-        Self { cond, expr }
+        Self {             id: Uuid::new_v4(),cond, expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -671,6 +699,7 @@ impl ConditionalExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct If {
+    id: Uuid,
     pub cond: Expr,
     pub if_expr: Expr,
     pub else_expr: Option<Expr>,
@@ -679,6 +708,7 @@ pub struct If {
 impl If {
     pub fn new(cond: Expr, if_expr: Expr, else_expr: Option<Expr>) -> Self {
         Self {
+            id: Uuid::new_v4(),
             cond,
             if_expr,
             else_expr,
@@ -747,13 +777,14 @@ impl TryFrom<&Val> for If {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TrapCall {
+    id: Uuid,
     pub target: Expr,
     pub key: String,
 }
 
 impl TrapCall {
     pub fn new(target: Expr, key: String) -> Self {
-        Self { target, key }
+        Self {             id: Uuid::new_v4(),target, key }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -810,6 +841,7 @@ impl TryFrom<&Val> for TrapCall {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
+    id: Uuid,
     pub func_name: FuncName,
     pub target: Box<Expr>,
     pub args: Vec<Expr>,
@@ -822,6 +854,7 @@ impl DotCall {
         args: Vec<Expr>,
     ) -> Self {
         Self {
+            id: Uuid::new_v4(),
             func_name,
             target,
             args,
@@ -1011,13 +1044,14 @@ impl PartialCallArgument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialCall {
+    id: Uuid,
     pub func_name: FuncName,
     pub args: Vec<PartialCallArgument>,
 }
 
 impl PartialCall {
     pub fn new(func_name: FuncName, args: Vec<PartialCallArgument>) -> Self {
-        Self { func_name, args }
+        Self { id: Uuid::new_v4(),func_name, args }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1146,6 +1180,7 @@ fn partial_call_arg_exprs_to_lines(
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
+    id: Uuid,
     pub target: CallTarget,
     pub args: Vec<Expr>,
 }
@@ -1226,7 +1261,7 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
 
 impl Call {
     pub fn new(target: CallTarget, args: Vec<Expr>) -> Self {
-        Self { target, args }
+        Self { id: Uuid::new_v4(),target, args }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1303,12 +1338,13 @@ impl TryFrom<&Val> for Call {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Not {
+    id: Uuid,
     pub operand: Expr,
 }
 
 impl Not {
     pub fn new(operand: Expr) -> Self {
-        Self { operand }
+        Self { id: Uuid::new_v4(),operand }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1349,13 +1385,14 @@ impl TryFrom<&Val> for Not {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Range {
+    id: Uuid,
     pub start: Expr,
     pub end: Expr,
 }
 
 impl Range {
     pub fn new(start: Expr, end: Expr) -> Self {
-        Self { start, end }
+        Self {id: Uuid::new_v4(), start, end }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1392,13 +1429,14 @@ impl TryFrom<&Val> for Range {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Func {
+    id: Uuid,
     pub params: Vec<Param>,
     pub body: Expr,
 }
 
 impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
-        Self { params, body }
+        Self { id: Uuid::new_v4(),params, body }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1463,6 +1501,7 @@ impl TryFrom<&Val> for Func {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Block {
+    id: Uuid,
     pub exprs: Vec<Expr>,
 }
 
@@ -1494,7 +1533,7 @@ fn separated_exprs_line(
 
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
-        Self { exprs }
+        Self { id: Uuid::new_v4(),exprs }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1539,12 +1578,13 @@ impl TryFrom<&Val> for Block {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dict {
+    id: Uuid,
     pub map: HashMap<TagName, DictVal>,
 }
 
 impl Dict {
     pub fn new(map: HashMap<TagName, DictVal>) -> Self {
-        Self { map }
+        Self {id: Uuid::new_v4(), map }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1750,12 +1790,13 @@ impl DictVal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return {
+    id: Uuid,
     pub expr: Expr,
 }
 
 impl Return {
     pub fn new(expr: Expr) -> Self {
-        Self { expr }
+        Self { id: Uuid::new_v4(),expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1792,12 +1833,13 @@ impl TryFrom<&Val> for Return {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Throw {
+    id: Uuid,
     pub expr: Expr,
 }
 
 impl Throw {
     pub fn new(expr: Expr) -> Self {
-        Self { expr }
+        Self { id: Uuid::new_v4(),expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1834,12 +1876,13 @@ impl TryFrom<&Val> for Throw {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct List {
+    id: Uuid,
     pub vals: Vec<Expr>,
 }
 
 impl List {
     pub fn new(vals: Vec<Expr>) -> Self {
-        Self { vals }
+        Self {id: Uuid::new_v4(), vals }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1964,6 +2007,43 @@ impl Expr {
 
     pub fn is_func(&self) -> bool {
         matches!(self, Self::Func(_))
+    }
+
+    pub fn id(&self) -> Uuid {
+        match self {
+            Self::Add(add) => add.0.id,
+            Self::And(and) => and.0.id,
+            Self::Cmp(cmp) => cmp.0.id,
+            Self::Div(div) => div.0.id,
+            Self::Eq(eq) => eq.0.id,
+            Self::Gt(gt) => gt.0.id,
+            Self::Gte(gte) => gte.0.id,
+            Self::Lt(lt) => lt.0.id,
+            Self::Lte(lte) => lte.0.id,
+            Self::Mul(mul) => mul.0.id,
+            Self::Ne(ne) => ne.0.id,
+            Self::Or(or) => or.0.id,
+            Self::Sub(sub) => sub.0.id,
+            Self::Assign(asn) => asn.id,
+            Self::Block(blk) => blk.id,
+            Self::Call(call) => call.id,
+            Self::Def(def) => def.id,
+            Self::Dict(dict) => dict.id,
+            Self::DotCall(dotc) => dotc.id,
+            Self::Func(func) => func.id,
+            Self::Id(id) => todo!("Make id its own struct"),
+            Self::If(iff) => iff.id,
+            Self::List(lst) => lst.id,
+            Self::Lit(lit) => todo!("Make lit its own struct"),
+            Self::Neg(neg) => neg.id,
+            Self::Not(not) => not.id,
+            Self::PartialCall(pcl) => pcl.id,
+            Self::Range(rng) => rng.id,
+            Self::Return(ret) => ret.id,
+            Self::Throw(thr) => thr.id,
+            Self::TrapCall(tcl) => tcl.id,
+            Self::TryCatch(tc) => tc.id,
+        }
     }
 
     /// May return an int representing how high the expression's precendence is,
@@ -2341,6 +2421,7 @@ fn var_val_to_tag_name(val: &Val) -> Option<TagName> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Assign {
+    id: Uuid,
     /// lhs
     pub name: TagName,
     /// rhs
@@ -2350,6 +2431,7 @@ pub struct Assign {
 impl Assign {
     pub fn new(name: TagName, expr: Expr) -> Self {
         Self {
+            id: Uuid::new_v4(),
             name,
             expr: Box::new(expr),
         }
@@ -2392,6 +2474,7 @@ impl TryFrom<&Val> for Assign {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Def {
+    id: Uuid,
     pub name: TagName,
     pub expr: Box<Expr>,
 }
@@ -2399,6 +2482,7 @@ pub struct Def {
 impl Def {
     pub fn new(name: TagName, expr: Expr) -> Self {
         Self {
+            id: Uuid::new_v4(),
             name,
             expr: Box::new(expr),
         }
