@@ -1934,6 +1934,25 @@ impl TryFrom<&Val> for List {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Id {
+    id: Uuid,
+    name: TagName,
+}
+
+impl Id {
+    pub fn new(name: TagName) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+        }
+    }
+
+    pub fn name(&self) -> &TagName {
+        &self.name
+    }
+}
+
 /// Enumerates the types of Axon expression.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -1957,7 +1976,7 @@ pub enum Expr {
     Dict(Dict),
     DotCall(DotCall),
     Func(Box<Func>),
-    Id(TagName),
+    Id(Id),
     If(Box<If>),
     List(List),
     Lit(Lit),
@@ -2031,10 +2050,10 @@ impl Expr {
             Self::Dict(dict) => dict.id,
             Self::DotCall(dotc) => dotc.id,
             Self::Func(func) => func.id,
-            Self::Id(id) => todo!("Make id its own struct"),
+            Self::Id(id) => id.id,
             Self::If(iff) => iff.id,
             Self::List(lst) => lst.id,
-            Self::Lit(lit) => todo!("Make lit its own struct"),
+            Self::Lit(lit) => lit.id,
             Self::Neg(neg) => neg.id,
             Self::Not(not) => not.id,
             Self::PartialCall(pcl) => pcl.id,
@@ -2164,12 +2183,12 @@ impl Expr {
             Self::Dict(dict) => dict.to_line(indent),
             Self::Func(func) => func.to_line(indent),
             Self::DotCall(dot_call) => dot_call.to_line(indent),
-            Self::Id(tag_name) => {
-                Line::new(indent.clone(), tag_name.clone().into_string())
+            Self::Id(id) => {
+                Line::new(indent.clone(), id.name().clone().into_string())
             }
             Self::If(iff) => iff.to_line(indent),
             Self::List(list) => list.to_line(indent),
-            Self::Lit(lit) => Line::new(indent.clone(), lit.to_axon_code()),
+            Self::Lit(lit) => Line::new(indent.clone(), lit.lit().to_axon_code()),
             Self::Neg(neg) => neg.to_line(indent),
             Self::Not(not) => not.to_line(indent),
             Self::PartialCall(partial_call) => partial_call.to_line(indent),
@@ -2203,13 +2222,13 @@ impl Expr {
             Self::Dict(dict) => dict.to_lines(indent),
             Self::DotCall(dot_call) => dot_call.to_lines(indent),
             Self::Func(func) => func.to_lines(indent),
-            Self::Id(tag_name) => {
-                vec![Line::new(indent.clone(), tag_name.clone().into_string())]
+            Self::Id(id) => {
+                vec![Line::new(indent.clone(), id.name().clone().into_string())]
             }
             Self::If(iff) => iff.to_lines(indent),
             Self::List(list) => list.to_lines(indent),
             Self::Lit(lit) => {
-                vec![Line::new(indent.clone(), lit.to_axon_code())]
+                vec![Line::new(indent.clone(), lit.lit().to_axon_code())]
             }
             Self::Neg(neg) => neg.to_lines(indent),
             Self::Not(not) => not.to_lines(indent),
@@ -2242,13 +2261,13 @@ impl TryFrom<&Val> for Expr {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let lit: Option<Lit> = val.try_into().ok();
+        let lit: Option<LitInner> = val.try_into().ok();
         if let Some(lit) = lit {
-            return Ok(Expr::Lit(lit));
+            return Ok(Expr::Lit(Lit::new(lit)));
         };
 
         if let Some(tag_name) = var_val_to_tag_name(val) {
-            return Ok(Expr::Id(tag_name));
+            return Ok(Expr::Id(Id::new(tag_name)));
         };
 
         let assign: Option<Assign> = val.try_into().ok();
@@ -2599,9 +2618,28 @@ impl TryFrom<&ap::Val> for Param {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Lit {
+    id: Uuid,
+    lit: LitInner,
+}
+
+impl Lit {
+    pub fn new(lit: LitInner) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            lit,
+        }
+    }
+
+    pub fn lit(&self) -> &LitInner {
+        &self.lit
+    }
+}
+
 /// A Axon literal value.
 #[derive(Clone, Debug, PartialEq)]
-pub enum Lit {
+pub enum LitInner {
     Bool(bool),
     Date(NaiveDate),
     Null,
@@ -2614,7 +2652,7 @@ pub enum Lit {
     YearMonth(YearMonth),
 }
 
-impl Lit {
+impl LitInner {
     pub fn to_axon_code(&self) -> String {
         match self {
             Self::Bool(true) => "true".to_owned(),
@@ -2647,30 +2685,30 @@ pub enum ConvertLitError {
     IsDictRemoveMarker,
 }
 
-impl TryFrom<&ap::Lit> for Lit {
+impl TryFrom<&ap::Lit> for LitInner {
     type Error = ConvertLitError;
 
     fn try_from(lit: &ap::Lit) -> Result<Self, Self::Error> {
         match lit {
-            ap::Lit::Bool(bool) => Ok(Lit::Bool(*bool)),
-            ap::Lit::Date(date) => Ok(Lit::Date(*date)),
+            ap::Lit::Bool(bool) => Ok(LitInner::Bool(*bool)),
+            ap::Lit::Date(date) => Ok(LitInner::Date(*date)),
             ap::Lit::DictMarker => Err(ConvertLitError::IsDictMarker),
             ap::Lit::DictRemoveMarker => {
                 Err(ConvertLitError::IsDictRemoveMarker)
             }
-            ap::Lit::Null => Ok(Lit::Null),
-            ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
-            ap::Lit::Ref(reff) => Ok(Lit::Ref(reff.clone())),
-            ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
-            ap::Lit::Symbol(symbol) => Ok(Lit::Symbol(symbol.clone())),
-            ap::Lit::Time(time) => Ok(Lit::Time(*time)),
-            ap::Lit::Uri(uri) => Ok(Lit::Uri(uri.clone())),
-            ap::Lit::YearMonth(ym) => Ok(Lit::YearMonth(ym.into())),
+            ap::Lit::Null => Ok(LitInner::Null),
+            ap::Lit::Num(number) => Ok(LitInner::Num(number.clone())),
+            ap::Lit::Ref(reff) => Ok(LitInner::Ref(reff.clone())),
+            ap::Lit::Str(string) => Ok(LitInner::Str(string.clone())),
+            ap::Lit::Symbol(symbol) => Ok(LitInner::Symbol(symbol.clone())),
+            ap::Lit::Time(time) => Ok(LitInner::Time(*time)),
+            ap::Lit::Uri(uri) => Ok(LitInner::Uri(uri.clone())),
+            ap::Lit::YearMonth(ym) => Ok(LitInner::YearMonth(ym.into())),
         }
     }
 }
 
-impl TryFrom<&Val> for Lit {
+impl TryFrom<&Val> for LitInner {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
@@ -2840,11 +2878,15 @@ mod tests {
     use std::convert::TryInto;
 
     fn lit_str(s: &str) -> Lit {
-        Lit::Str(s.to_owned())
+        Lit::new(LitInner::Str(s.to_owned()))
     }
 
     fn lit_num(n: f64) -> Lit {
-        Lit::Num(Number::new(n, None))
+        Lit::new(LitInner::Num(Number::new(n, None)))
+    }
+
+    fn idtn(tag_name: &str) -> Id {
+        Id::new(tn(tag_name))
     }
 
     fn tn(tag_name: &str) -> TagName {
@@ -2868,8 +2910,8 @@ mod tests {
     #[test]
     fn val_to_lit_works() {
         let val = &ap_parse(r#"{type:"literal", val:"hello"}"#).unwrap();
-        let expected = Lit::Str("hello".to_owned());
-        let lit: Lit = val.try_into().unwrap();
+        let expected = LitInner::Str("hello".to_owned());
+        let lit: LitInner = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
 
@@ -2877,8 +2919,8 @@ mod tests {
     fn val_to_lit_symbol_works() {
         let val = &ap_parse(r#"{type:"literal", val:^steam-boiler}"#).unwrap();
         let expected =
-            Lit::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
-        let lit: Lit = val.try_into().unwrap();
+            LitInner::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
+        let lit: LitInner = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
 
@@ -3029,7 +3071,7 @@ mod tests {
     #[test]
     fn val_to_expr_call_works() {
         let val = &ap_parse(r#"{type:"call", target:{type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"x"}, {type:"literal", val:"someFunc"}]}, args:[]}"#).unwrap();
-        let var_expr = Expr::Id(tn("x"));
+        let var_expr = Expr::Id(idtn("x"));
         let trap_call = TrapCall::new(var_expr, "someFunc".to_owned());
         let target = Expr::TrapCall(Box::new(trap_call));
         let target = CallTarget::Expr(Box::new(target));
@@ -3088,8 +3130,8 @@ mod tests {
     #[test]
     fn val_to_and_works() {
         let val = &ap_parse(r#"{type:"and", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = And(BinOp::new(lhs, BinOpId::And, rhs));
         let and: And = val.try_into().unwrap();
         assert_eq!(and, expected);
@@ -3098,8 +3140,8 @@ mod tests {
     #[test]
     fn val_to_or_works() {
         let val = &ap_parse(r#"{type:"or", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Or(BinOp::new(lhs, BinOpId::Or, rhs));
         let or: Or = val.try_into().unwrap();
         assert_eq!(or, expected);
@@ -3108,8 +3150,8 @@ mod tests {
     #[test]
     fn val_to_add_works() {
         let val = &ap_parse(r#"{type:"add", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Add(BinOp::new(lhs, BinOpId::Add, rhs));
         let add: Add = val.try_into().unwrap();
         assert_eq!(add, expected);
@@ -3118,8 +3160,8 @@ mod tests {
     #[test]
     fn val_to_cmp_works() {
         let val = &ap_parse(r#"{type:"cmp", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Cmp(BinOp::new(lhs, BinOpId::Cmp, rhs));
         let cmp: Cmp = val.try_into().unwrap();
         assert_eq!(cmp, expected);
@@ -3128,8 +3170,8 @@ mod tests {
     #[test]
     fn val_to_div_works() {
         let val = &ap_parse(r#"{type:"div", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Div(BinOp::new(lhs, BinOpId::Div, rhs));
         let div: Div = val.try_into().unwrap();
         assert_eq!(div, expected);
@@ -3138,8 +3180,8 @@ mod tests {
     #[test]
     fn val_to_eq_works() {
         let val = &ap_parse(r#"{type:"eq", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Eq(BinOp::new(lhs, BinOpId::Eq, rhs));
         let eq: Eq = val.try_into().unwrap();
         assert_eq!(eq, expected);
@@ -3148,8 +3190,8 @@ mod tests {
     #[test]
     fn val_to_gt_works() {
         let val = &ap_parse(r#"{type:"gt", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Gt(BinOp::new(lhs, BinOpId::Gt, rhs));
         let gt: Gt = val.try_into().unwrap();
         assert_eq!(gt, expected);
@@ -3158,8 +3200,8 @@ mod tests {
     #[test]
     fn val_to_gte_works() {
         let val = &ap_parse(r#"{type:"ge", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Gte(BinOp::new(lhs, BinOpId::Gte, rhs));
         let gte: Gte = val.try_into().unwrap();
         assert_eq!(gte, expected);
@@ -3168,8 +3210,8 @@ mod tests {
     #[test]
     fn val_to_lt_works() {
         let val = &ap_parse(r#"{type:"lt", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Lt(BinOp::new(lhs, BinOpId::Lt, rhs));
         let lt: Lt = val.try_into().unwrap();
         assert_eq!(lt, expected);
@@ -3178,8 +3220,8 @@ mod tests {
     #[test]
     fn val_to_lte_works() {
         let val = &ap_parse(r#"{type:"le", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Lte(BinOp::new(lhs, BinOpId::Lte, rhs));
         let lte: Lte = val.try_into().unwrap();
         assert_eq!(lte, expected);
@@ -3188,8 +3230,8 @@ mod tests {
     #[test]
     fn val_to_mul_works() {
         let val = &ap_parse(r#"{type:"mul", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Mul(BinOp::new(lhs, BinOpId::Mul, rhs));
         let mul: Mul = val.try_into().unwrap();
         assert_eq!(mul, expected);
@@ -3198,8 +3240,8 @@ mod tests {
     #[test]
     fn val_to_ne_works() {
         let val = &ap_parse(r#"{type:"ne", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Ne(BinOp::new(lhs, BinOpId::Ne, rhs));
         let ne: Ne = val.try_into().unwrap();
         assert_eq!(ne, expected);
@@ -3208,8 +3250,8 @@ mod tests {
     #[test]
     fn val_to_sub_works() {
         let val = &ap_parse(r#"{type:"sub", lhs:{type:"var", name:"a"}, rhs:{type:"var", name:"b"}}"#).unwrap();
-        let lhs = Expr::Id(tn("a"));
-        let rhs = Expr::Id(tn("b"));
+        let lhs = Expr::Id(idtn("a"));
+        let rhs = Expr::Id(idtn("b"));
         let expected = Sub(BinOp::new(lhs, BinOpId::Sub, rhs));
         let sub: Sub = val.try_into().unwrap();
         assert_eq!(sub, expected);
@@ -3218,8 +3260,8 @@ mod tests {
     #[test]
     fn val_to_if_no_else_works() {
         let val = &ap_parse(r#"{type:"if", cond:{type:"var", name:"a"}, ifExpr:{type:"var", name:"b"}}"#).unwrap();
-        let cond = Expr::Id(tn("a"));
-        let if_expr = Expr::Id(tn("b"));
+        let cond = Expr::Id(idtn("a"));
+        let if_expr = Expr::Id(idtn("b"));
         let else_expr = None;
         let expected = If::new(cond, if_expr, else_expr);
         let iff: If = val.try_into().unwrap();
@@ -3229,9 +3271,9 @@ mod tests {
     #[test]
     fn val_to_if_with_else_works() {
         let val = &ap_parse(r#"{type:"if", cond:{type:"var", name:"a"}, ifExpr:{type:"var", name:"b"}, elseExpr:{type:"var", name:"c"}}"#).unwrap();
-        let cond = Expr::Id(tn("a"));
-        let if_expr = Expr::Id(tn("b"));
-        let else_expr = Some(Expr::Id(tn("c")));
+        let cond = Expr::Id(idtn("a"));
+        let if_expr = Expr::Id(idtn("b"));
+        let else_expr = Some(Expr::Id(idtn("c")));
         let expected = If::new(cond, if_expr, else_expr);
         let iff: If = val.try_into().unwrap();
         assert_eq!(iff, expected);
@@ -3240,8 +3282,8 @@ mod tests {
     #[test]
     fn val_to_try_catch_no_exc_name_works() {
         let val = &ap_parse(r#"{type:"try", tryExpr:{type:"var", name:"a"}, catchExpr:{type:"var", name:"b"}}"#).unwrap();
-        let try_expr = Expr::Id(tn("a"));
-        let catch_expr = Expr::Id(tn("b"));
+        let try_expr = Expr::Id(idtn("a"));
+        let catch_expr = Expr::Id(idtn("b"));
         let exc_name = None;
         let expected = TryCatch::new(try_expr, exc_name, catch_expr);
         let try_catch: TryCatch = val.try_into().unwrap();
@@ -3251,8 +3293,8 @@ mod tests {
     #[test]
     fn val_to_try_catch_with_exc_name_works() {
         let val = &ap_parse(r#"{type:"try", tryExpr:{type:"var", name:"a"}, errVarName:"ex", catchExpr:{type:"var", name:"b"}}"#).unwrap();
-        let try_expr = Expr::Id(tn("a"));
-        let catch_expr = Expr::Id(tn("b"));
+        let try_expr = Expr::Id(idtn("a"));
+        let catch_expr = Expr::Id(idtn("b"));
         let exc_name = Some("ex".to_owned());
         let expected = TryCatch::new(try_expr, exc_name, catch_expr);
         let try_catch: TryCatch = val.try_into().unwrap();
@@ -3263,7 +3305,7 @@ mod tests {
     fn val_to_neg_works() {
         let val = &ap_parse(r#"{type:"neg", operand:{type:"var", name:"a"}}"#)
             .unwrap();
-        let operand = Expr::Id(tn("a"));
+        let operand = Expr::Id(idtn("a"));
         let expected = Neg::new(operand);
         let neg: Neg = val.try_into().unwrap();
         assert_eq!(neg, expected);
@@ -3309,6 +3351,10 @@ mod format_tests {
 
     const INDENT: &str = "    ";
 
+    fn idtn(s: &str) -> Id {
+        Id::new(tn(s))
+    }
+
     fn tn(s: &str) -> TagName {
         TagName::new(s.to_owned()).expect("s is not a valid tagName")
     }
@@ -3322,7 +3368,7 @@ mod format_tests {
     }
 
     fn lit_str(s: &str) -> Lit {
-        Lit::Str(s.to_owned())
+        Lit::new(LitInner::Str(s.to_owned()))
     }
 
     fn lit_num_expr(n: f64) -> Expr {
@@ -3330,7 +3376,7 @@ mod format_tests {
     }
 
     fn lit_num(n: f64) -> Lit {
-        Lit::Num(Number::new(n, None))
+        Lit::new(LitInner::Num(Number::new(n, None)))
     }
 
     fn stringify(lines: &Lines) -> Vec<String> {
@@ -3540,7 +3586,7 @@ mod format_tests {
 
     #[test]
     fn flat_if_no_nesting_with_no_else_works() {
-        let cond1 = Expr::Id(tn("a"));
+        let cond1 = Expr::Id(idtn("a"));
         let expr1 = lit_str_expr("a-expr");
         let ce1 = ConditionalExpr::new(cond1, expr1);
         let flat_if = FlatIf::new(vec![ce1], None);
@@ -3553,7 +3599,7 @@ mod format_tests {
 
     #[test]
     fn flat_if_no_nesting_with_else_works() {
-        let cond1 = Expr::Id(tn("a"));
+        let cond1 = Expr::Id(idtn("a"));
         let expr1 = lit_str_expr("a-expr");
         let ce1 = ConditionalExpr::new(cond1, expr1);
 
@@ -3571,11 +3617,11 @@ mod format_tests {
 
     #[test]
     fn flat_if_some_nesting_with_no_else_works() {
-        let cond1 = Expr::Id(tn("a"));
+        let cond1 = Expr::Id(idtn("a"));
         let expr1 = lit_str_expr("a-expr");
         let ce1 = ConditionalExpr::new(cond1, expr1);
 
-        let cond2 = Expr::Id(tn("b"));
+        let cond2 = Expr::Id(idtn("b"));
         let expr2 = lit_str_expr("b-expr");
         let ce2 = ConditionalExpr::new(cond2, expr2);
 
