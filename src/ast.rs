@@ -8,6 +8,29 @@ use std::convert::{From, TryFrom, TryInto};
 // TODO later:
 // defcomps don't seem to work in parseAst
 
+// 1 - (2 + 3)
+// Min (1) (2 + 3)
+// 5    5
+
+// precedence (1 is highest)
+
+// do i need parenthesis?
+// 1. look at parent precedence
+// 2. if parent is lower  precedence: no
+//    if parent is higher precedence: yes
+//    if parent is same precedence:
+//          if i am on same side as parent associativity: no
+//          if i am on wrong side of parent associativity: yes
+
+//"(if (true) utilsAssert else parseRef).params(if (true) true else false)"
+//left if requires parens, right if does not
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Associativity {
+    Left,
+    Right,
+}
+
 macro_rules! impl_try_from_val_ref_for {
     ($type_name:ty, $bin_op:expr) => {
         impl TryFrom<&Val> for $type_name {
@@ -173,6 +196,10 @@ impl BinOp {
     pub fn precedence(&self) -> u8 {
         self.bin_op_id.precedence()
     }
+
+    pub fn associativity(&self) -> Option<Associativity> {
+        self.bin_op_id.associativity()
+    }
 }
 
 fn val_to_bin_op(
@@ -254,22 +281,40 @@ impl BinOpId {
     }
 
     /// Returns an int representing how high the operator's precendence is,
-    /// where 2 is the highest precedence for a binary operation.
+    /// where 20 is the highest precedence for a binary operation.
     pub fn precedence(&self) -> u8 {
         match self {
-            Self::Add => 3,
-            Self::And => 6,
-            Self::Cmp => 5,
-            Self::Div => 2,
-            Self::Eq => 4,
-            Self::Gt => 5,
-            Self::Gte => 5,
-            Self::Lt => 5,
-            Self::Lte => 5,
-            Self::Mul => 2,
-            Self::Ne => 4,
-            Self::Or => 7,
-            Self::Sub => 3,
+            Self::Add => 30,
+            Self::And => 60,
+            Self::Cmp => 50,
+            Self::Div => 20,
+            Self::Eq => 40,
+            Self::Gt => 50,
+            Self::Gte => 50,
+            Self::Lt => 50,
+            Self::Lte => 50,
+            Self::Mul => 20,
+            Self::Ne => 40,
+            Self::Or => 70,
+            Self::Sub => 30,
+        }
+    }
+
+    pub fn associativity(&self) -> Option<Associativity> {
+        match self {
+            Self::Add => Some(Associativity::Right), // Based on the parsed AST.
+            Self::And => Some(Associativity::Left),
+            Self::Cmp => None, // 1 <=> 1 <=> 1 does not parse in SkySpark.
+            Self::Div => Some(Associativity::Left),
+            Self::Eq => None, // 5 == 5 == true does not parse in SkySpark.
+            Self::Gt => None,
+            Self::Gte => None,
+            Self::Lt => None,
+            Self::Lte => None,
+            Self::Mul => Some(Associativity::Left),
+            Self::Ne => None,
+            Self::Or => Some(Associativity::Right), // Based on the parsed AST.
+            Self::Sub => Some(Associativity::Left),
         }
     }
 }
@@ -1940,24 +1985,61 @@ impl Expr {
             Self::Ne(ne) => Some(ne.0.precedence()),
             Self::Or(or) => Some(or.0.precedence()),
             Self::Sub(sub) => Some(sub.0.precedence()),
-            Self::Assign(_) => Some(8),
+            Self::Assign(_) => Some(80),
             Self::Block(_) => None,
             Self::Call(_) => None,
             Self::Def(_) => None,
             Self::Dict(_) => None,
-            Self::DotCall(_) => Some(0),
+            Self::DotCall(_) => Some(1),
             Self::Func(_) => None,
             Self::Id(_) => None,
             Self::If(_) => None,
             Self::List(_) => None,
             Self::Lit(_) => None,
-            Self::Neg(_) => Some(1),
-            Self::Not(_) => Some(1),
+            Self::Neg(_) => Some(10),
+            Self::Not(_) => Some(10),
             Self::PartialCall(_) => None,
             Self::Range(_) => None,
             Self::Return(_) => None,
             Self::Throw(_) => None,
             Self::TrapCall(_) => None,
+            Self::TryCatch(_) => None,
+        }
+    }
+
+    pub fn associativity(&self) -> Option<Associativity> {
+        match self {
+            Self::Add(add) => add.0.associativity(),
+            Self::And(and) => and.0.associativity(),
+            Self::Cmp(cmp) => cmp.0.associativity(),
+            Self::Div(div) => div.0.associativity(),
+            Self::Eq(eq) => eq.0.associativity(),
+            Self::Gt(gt) => gt.0.associativity(),
+            Self::Gte(gte) => gte.0.associativity(),
+            Self::Lt(lt) => lt.0.associativity(),
+            Self::Lte(lte) => lte.0.associativity(),
+            Self::Mul(mul) => mul.0.associativity(),
+            Self::Ne(ne) => ne.0.associativity(),
+            Self::Or(or) => or.0.associativity(),
+            Self::Sub(sub) => sub.0.associativity(),
+            Self::Assign(_) => Some(Associativity::Right),
+            Self::Block(_) => None, // Requires explicit parentheses to parse.
+            Self::Call(_) => None, // Requires explicit parentheses to parse.
+            Self::Def(_) => Some(Associativity::Right),
+            Self::Dict(_) => None,
+            Self::DotCall(_) => None, // Sort of left associative, but a.(b.c) will not parse.
+            Self::Func(_) => None,
+            Self::Id(_) => None,
+            Self::If(_) => None,
+            Self::List(_) => None,
+            Self::Lit(_) => None,
+            Self::Neg(_) => None, // --1 will not parse.
+            Self::Not(_) => None, // "not not true" will not parse.
+            Self::PartialCall(_) => None,
+            Self::Range(_) => None, // 1..2..3 will not parse.
+            Self::Return(_) => Some(Associativity::Right),
+            Self::Throw(_) => Some(Associativity::Right),
+            Self::TrapCall(_) => Some(Associativity::Left),
             Self::TryCatch(_) => None,
         }
     }
