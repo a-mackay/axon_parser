@@ -321,8 +321,8 @@ impl BinOpId {
 
     pub fn associativity(&self) -> Option<Associativity> {
         match self {
-            Self::Add => Some(Associativity::Right), // Based on the parsed AST.
-            Self::And => Some(Associativity::Left),
+            Self::Add => Some(Associativity::Left),
+            Self::And => Some(Associativity::Right), // Based on the parsed AST.
             Self::Cmp => None, // 1 <=> 1 <=> 1 does not parse in SkySpark.
             Self::Div => Some(Associativity::Left),
             Self::Eq => None, // 5 == 5 == true does not parse in SkySpark.
@@ -2105,6 +2105,10 @@ impl Id {
 
     pub fn name(&self) -> &TagName {
         &self.name
+    }
+
+    pub fn to_axon_code(&self) -> String {
+        self.name().to_string()
     }
 }
 

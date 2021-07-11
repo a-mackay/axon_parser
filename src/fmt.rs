@@ -1,4 +1,4 @@
-use crate::ast::{Associativity, BinOp, Expr, Lit};
+use crate::ast::{Associativity, BinOp, Expr, Id, Lit};
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
@@ -54,7 +54,7 @@ impl Rewrite for Expr {
             // Self::Dict(_) => false,
             // Self::DotCall(_) => false,
             // Self::Func(_) => true,
-            // Self::Id(_) => false,
+            Self::Id(x) => x.rewrite(context),
             // Self::If(_) => true,
             // Self::List(_) => false,
             Self::Lit(x) => x.rewrite(context),
@@ -191,6 +191,19 @@ impl Rewrite for Lit {
     }
 }
 
+impl Rewrite for Id {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let code = self.to_axon_code();
+        let new_code =
+            format!("{indent}{code}", indent = context.indent(), code = code);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
 fn needs_parens(
     parent_precedence: usize,
     parent_assoc: Option<Associativity>,
@@ -205,15 +218,16 @@ fn needs_parens(
         let parent_assoc = parent_assoc.unwrap();
         let both_left = parent_assoc == Associativity::Left && child_is_left;
         let both_right = parent_assoc == Associativity::Right && !child_is_left;
-        both_left || both_right
+        let same_side = both_left || both_right;
+        !same_side
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Add, BinOp, BinOpId, Expr, Lit, LitInner, Mul};
-    use raystack_core::Number;
+    use crate::ast::{Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Sub};
+    use raystack_core::{Number, TagName};
 
     fn c() -> Context {
         Context::new(0, MAX_WIDTH)
@@ -227,6 +241,14 @@ mod tests {
 
     fn ex_lit_num(n: usize) -> Expr {
         Expr::Lit(lit_num(n))
+    }
+
+    fn tn(s: &str) -> TagName {
+        TagName::new(s.to_owned()).unwrap()
+    }
+
+    fn ex_id(s: &str) -> Expr {
+        Expr::Id(Id::new(tn(s)))
     }
 
     #[test]
@@ -249,5 +271,60 @@ mod tests {
 
         let code = mul.rewrite(c()).unwrap();
         assert_eq!(code, "(1 + 2) * 3")
+    }
+
+    #[test]
+    fn bin_op_precedence_works_3() {
+        let add = BinOp::new(ex_lit_num(1), BinOpId::Add, ex_lit_num(2));
+        let add = Expr::Add(Box::new(Add(add)));
+        let mul = BinOp::new(ex_lit_num(3), BinOpId::Mul, add);
+        let mul = Expr::Mul(Box::new(Mul(mul)));
+
+        let code = mul.rewrite(c()).unwrap();
+        assert_eq!(code, "3 * (1 + 2)")
+    }
+
+    #[test]
+    fn bin_op_equal_precedence_works_1() {
+        let sub = BinOp::new(ex_lit_num(1), BinOpId::Sub, ex_lit_num(2));
+        let sub = Expr::Sub(Box::new(Sub(sub)));
+        let add = BinOp::new(sub, BinOpId::Add, ex_lit_num(3));
+        let add = Expr::Add(Box::new(Add(add)));
+
+        let code = add.rewrite(c()).unwrap();
+        assert_eq!(code, "1 - 2 + 3")
+    }
+
+    #[test]
+    fn bin_op_equal_precedence_works_2() {
+        let add = BinOp::new(ex_lit_num(2), BinOpId::Add, ex_lit_num(3));
+        let add = Expr::Add(Box::new(Add(add)));
+        let sub = BinOp::new(ex_lit_num(1), BinOpId::Sub, add);
+        let sub = Expr::Sub(Box::new(Sub(sub)));
+
+        let code = sub.rewrite(c()).unwrap();
+        assert_eq!(code, "1 - (2 + 3)")
+    }
+
+    #[test]
+    fn bin_op_equal_precedence_works_3() {
+        let and_r = BinOp::new(ex_id("b"), BinOpId::And, ex_id("c"));
+        let and_r = Expr::And(Box::new(And(and_r)));
+        let and_l = BinOp::new(ex_id("a"), BinOpId::And, and_r);
+        let and_l = Expr::And(Box::new(And(and_l)));
+
+        let code = and_l.rewrite(c()).unwrap();
+        assert_eq!(code, "a and b and c")
+    }
+
+    #[test]
+    fn bin_op_equal_precedence_works_4() {
+        let and_l = BinOp::new(ex_id("a"), BinOpId::And, ex_id("b"));
+        let and_l = Expr::And(Box::new(And(and_l)));
+        let and_r = BinOp::new(and_l, BinOpId::And, ex_id("c"));
+        let and_r = Expr::And(Box::new(And(and_r)));
+
+        let code = and_r.rewrite(c()).unwrap();
+        assert_eq!(code, "(a and b) and c")
     }
 }
