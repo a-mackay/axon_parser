@@ -6,41 +6,6 @@ use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 use uuid::Uuid;
 
-/// The size of a single block of indentation, the number of spaces (' ').
-const SPACES: usize = 4;
-/// The maximum possible width. This value is arbitrary.
-const MAX_WIDTH: usize = 800;
-
-#[derive(Clone, Copy, Debug)]
-struct Context {
-    /// The number of spaces across this code should be.
-    indent: usize,
-    /// The maximum width allowed for this code.
-    max_width: usize,
-}
-
-impl Context {
-    fn new(indent: usize, max_width: usize) -> Self {
-        Self { indent, max_width }
-    }
-
-    fn max_width(&self) -> usize {
-        self.max_width
-    }
-
-    fn indent(&self) -> String {
-        " ".repeat(self.indent)
-    }
-
-    fn str_within_max_width(&self, s: &str) -> bool {
-        s.len() <= self.max_width
-    }
-}
-
-trait Rewrite {
-    fn rewrite(&self, context: Context) -> Option<String>;
-}
-
 // TODO later:
 // defcomps don't seem to work in parseAst
 
@@ -155,67 +120,67 @@ fn group_line_with_precedence_if_necessary(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Add(BinOp);
+pub struct Add(pub BinOp);
 impl_try_from_val_ref_for!(Add, BinOpId::Add);
 impl_line_and_lines_for!(Add, BinOpId::Add);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct And(BinOp);
+pub struct And(pub BinOp);
 impl_try_from_val_ref_for!(And, BinOpId::And);
 impl_line_and_lines_for!(And, BinOpId::And);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Cmp(BinOp);
+pub struct Cmp(pub BinOp);
 impl_try_from_val_ref_for!(Cmp, BinOpId::Cmp);
 impl_line_and_lines_for!(Cmp, BinOpId::Cmp);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Div(BinOp);
+pub struct Div(pub BinOp);
 impl_try_from_val_ref_for!(Div, BinOpId::Div);
 impl_line_and_lines_for!(Div, BinOpId::Div);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Eq(BinOp);
+pub struct Eq(pub BinOp);
 impl_try_from_val_ref_for!(Eq, BinOpId::Eq);
 impl_line_and_lines_for!(Eq, BinOpId::Eq);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Gt(BinOp);
+pub struct Gt(pub BinOp);
 impl_try_from_val_ref_for!(Gt, BinOpId::Gt);
 impl_line_and_lines_for!(Gt, BinOpId::Gt);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Gte(BinOp);
+pub struct Gte(pub BinOp);
 impl_try_from_val_ref_for!(Gte, BinOpId::Gte);
 impl_line_and_lines_for!(Gte, BinOpId::Gte);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Lt(BinOp);
+pub struct Lt(pub BinOp);
 impl_try_from_val_ref_for!(Lt, BinOpId::Lt);
 impl_line_and_lines_for!(Lt, BinOpId::Lt);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Lte(BinOp);
+pub struct Lte(pub BinOp);
 impl_try_from_val_ref_for!(Lte, BinOpId::Lte);
 impl_line_and_lines_for!(Lte, BinOpId::Lte);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Mul(BinOp);
+pub struct Mul(pub BinOp);
 impl_try_from_val_ref_for!(Mul, BinOpId::Mul);
 impl_line_and_lines_for!(Mul, BinOpId::Mul);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Ne(BinOp);
+pub struct Ne(pub BinOp);
 impl_try_from_val_ref_for!(Ne, BinOpId::Ne);
 impl_line_and_lines_for!(Ne, BinOpId::Ne);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Sub(BinOp);
+pub struct Sub(pub BinOp);
 impl_try_from_val_ref_for!(Sub, BinOpId::Sub);
 impl_line_and_lines_for!(Sub, BinOpId::Sub);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Or(BinOp);
+pub struct Or(pub BinOp);
 impl_try_from_val_ref_for!(Or, BinOpId::Or);
 impl_line_and_lines_for!(Or, BinOpId::Or);
 
@@ -232,55 +197,6 @@ impl PartialEq for BinOp {
         self.lhs == other.lhs
             && self.bin_op_id == other.bin_op_id
             && self.rhs == other.rhs
-    }
-}
-
-impl Rewrite for BinOp {
-    fn rewrite(&self, context: Context) -> Option<String> {
-        // TODO: this only rewrites to a single line,
-        // when it could rewrite to multiple lines.
-
-        let left_needs_parens = self.needs_parens(true);
-        let right_needs_parens = self.needs_parens(false);
-        let child_context = Context::new(0, MAX_WIDTH);
-        let mut ls = self
-            .lhs
-            .rewrite(child_context)
-            .expect("BinOp LHS exceeds MAX_WIDTH");
-        if left_needs_parens {
-            ls = format!("({})", ls);
-        }
-        let mut rs = self
-            .rhs
-            .rewrite(child_context)
-            .expect("BinOp RHS exceeds MAX_WIDTH");
-        if right_needs_parens {
-            rs = format!("({})", rs);
-        }
-        let new_code = format!("{} {} {}", ls, self.bin_op_id.to_symbol(), rs);
-        if context.str_within_max_width(&new_code) {
-            Some(new_code)
-        } else {
-            None
-        }
-    }
-}
-
-fn needs_parens(
-    parent_precedence: usize,
-    parent_assoc: Option<Associativity>,
-    child_precedence: usize,
-    child_is_left: bool,
-) -> bool {
-    if child_precedence > parent_precedence {
-        false
-    } else if child_precedence < parent_precedence || parent_assoc.is_none() {
-        true
-    } else {
-        let parent_assoc = parent_assoc.unwrap();
-        let both_left = parent_assoc == Associativity::Left && child_is_left;
-        let both_right = parent_assoc == Associativity::Right && !child_is_left;
-        both_left || both_right
     }
 }
 
@@ -302,72 +218,6 @@ impl BinOp {
 
     pub fn associativity(&self) -> Option<Associativity> {
         self.bin_op_id.associativity()
-    }
-
-    fn needs_parens(&self, is_left: bool) -> bool {
-        let prec = self.precedence();
-        let assoc = self.associativity();
-
-        match &self.lhs {
-            Expr::Add(add) => {
-                needs_parens(prec, assoc, add.0.precedence(), is_left)
-            }
-            Expr::And(and) => {
-                needs_parens(prec, assoc, and.0.precedence(), is_left)
-            }
-            Expr::Cmp(cmp) => {
-                needs_parens(prec, assoc, cmp.0.precedence(), is_left)
-            }
-            Expr::Div(div) => {
-                needs_parens(prec, assoc, div.0.precedence(), is_left)
-            }
-            Expr::Eq(eq) => {
-                needs_parens(prec, assoc, eq.0.precedence(), is_left)
-            }
-            Expr::Gt(gt) => {
-                needs_parens(prec, assoc, gt.0.precedence(), is_left)
-            }
-            Expr::Gte(gte) => {
-                needs_parens(prec, assoc, gte.0.precedence(), is_left)
-            }
-            Expr::Lt(lt) => {
-                needs_parens(prec, assoc, lt.0.precedence(), is_left)
-            }
-            Expr::Lte(lte) => {
-                needs_parens(prec, assoc, lte.0.precedence(), is_left)
-            }
-            Expr::Mul(mul) => {
-                needs_parens(prec, assoc, mul.0.precedence(), is_left)
-            }
-            Expr::Ne(ne) => {
-                needs_parens(prec, assoc, ne.0.precedence(), is_left)
-            }
-            Expr::Or(or) => {
-                needs_parens(prec, assoc, or.0.precedence(), is_left)
-            }
-            Expr::Sub(sub) => {
-                needs_parens(prec, assoc, sub.0.precedence(), is_left)
-            }
-            Expr::Assign(_) => true,
-            Expr::Block(_) => true,
-            Expr::Call(_) => false,
-            Expr::Def(_) => true,
-            Expr::Dict(_) => false,
-            Expr::DotCall(_) => false,
-            Expr::Func(_) => true,
-            Expr::Id(_) => false,
-            Expr::If(_) => true,
-            Expr::List(_) => false,
-            Expr::Lit(_) => false,
-            Expr::Neg(_) => false,
-            Expr::Not(_) => false,
-            Expr::PartialCall(_) => false,
-            Expr::Range(_) => true,
-            Expr::Return(_) => true,
-            Expr::Throw(_) => true,
-            Expr::TrapCall(_) => true,
-            Expr::TryCatch(_) => true,
-        }
     }
 }
 
@@ -2295,12 +2145,6 @@ pub enum Expr {
     TryCatch(Box<TryCatch>),
 }
 
-impl Rewrite for Expr {
-    fn rewrite(&self, context: Context) -> Option<String> {
-        todo!()
-    }
-}
-
 /// Represents the indentation at the start of a line of Axon code.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Indent {
@@ -2952,19 +2796,6 @@ pub struct Lit {
 impl PartialEq for Lit {
     fn eq(&self, other: &Self) -> bool {
         self.lit == other.lit
-    }
-}
-
-impl Rewrite for Lit {
-    fn rewrite(&self, context: Context) -> Option<String> {
-        let code = self.to_axon_code();
-        let new_code =
-            format!("{indent}{code}", indent = context.indent(), code = code);
-        if context.str_within_max_width(&new_code) {
-            Some(new_code)
-        } else {
-            None
-        }
     }
 }
 
