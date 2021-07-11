@@ -27,7 +27,12 @@ impl Context {
     }
 
     fn str_within_max_width(&self, s: &str) -> bool {
-        s.len() <= self.max_width
+        let max_len = s
+            .lines()
+            .map(|ln| ln.len())
+            .reduce(std::cmp::max)
+            .expect("s is a rewritten str, it shouldn't be empty so lines shouldn't be empty");
+        max_len <= self.max_width
     }
 }
 
@@ -119,11 +124,7 @@ impl BinOp {
         let prec = self.precedence();
         let assoc = self.associativity();
 
-        let child = if is_left {
-            &self.lhs
-        } else {
-            &self.rhs
-        };
+        let child = if is_left { &self.lhs } else { &self.rhs };
 
         match child {
             Expr::Add(x) => {
@@ -226,7 +227,9 @@ fn needs_parens(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Sub};
+    use crate::ast::{
+        Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Sub,
+    };
     use raystack_core::{Number, TagName};
 
     fn c() -> Context {
