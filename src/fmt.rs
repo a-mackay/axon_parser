@@ -40,7 +40,35 @@ impl Rewrite for Range {
     fn rewrite(&self, context: Context) -> Option<String> {
         let start_needs_parens = Self::needs_parens(&self.start);
         let end_needs_parens = Self::needs_parens(&self.end);
-        let start = self.start.rewrite(context)
+        let mut start = self.start.rewrite(context)?;
+        let mut end = self.end.rewrite(context)?;
+        if start_needs_parens {
+            start = add_parens(&start);
+        }
+        if end_needs_parens {
+            end = add_parens(&end);
+        }
+        let new_code = match (is_one_line(&start), is_one_line(&end)) {
+            (true, true) => {
+                let one_line = format!("{start}..{end}", start = start, end = end.trim_start());
+                if context.str_within_max_width(&one_line) {
+                    one_line
+                } else {
+                    let ind = context.indent();
+                    format!("{start}\n{ind}..\n{end}", start = start, ind = ind, end = end)
+                }
+            },
+            _ => {
+                let ind = context.indent();
+                format!("{start}\n{ind}..\n{end}", start = start, ind = ind, end = end)
+            },
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
     }
 }
 
@@ -113,7 +141,7 @@ impl Rewrite for Expr {
             Self::Neg(x) => x.rewrite(context),
             Self::Not(x) => x.rewrite(context),
             // Self::PartialCall(_) => false,
-            // Self::Range(_) => true,
+            Self::Range(x) => x.rewrite(context),
             Self::Return(x) => x.rewrite(context),
             Self::Throw(x) => x.rewrite(context),
             // Self::TrapCall(_) => true,
@@ -714,6 +742,29 @@ mod tests {
 
     #[test]
     fn throw_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn range_single_line_works() {
+        let start = ex_lit_num(100);
+        let end = ex_lit_num(200);
+        let range = Range::new(start, end);
+        let code = range.rewrite(c()).unwrap();
+        assert_eq!(code, "100..200")
+    }
+
+    #[test]
+    fn range_multi_line_from_single_lines_works() {
+        let start = ex_lit_num(100);
+        let end = ex_lit_num(200);
+        let range = Range::new(start, end);
+        let code = range.rewrite(nc(4, 7)).unwrap();
+        assert_eq!(code, "    100\n    ..\n    200")
+    }
+
+    #[test]
+    fn range_multi_line_works() {
         todo!()
     }
 }
