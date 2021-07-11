@@ -8,14 +8,33 @@ use uuid::Uuid;
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
+/// The maximum possible width. This value is arbitrary.
+const MAX_WIDTH: usize = 800;
 
+#[derive(Clone, Copy, Debug)]
 struct Context {
-    /// The parent expression within which this code is nested.
-    parent_expr: Option<Expr>,
     /// The number of spaces across this code should be.
     indent: usize,
     /// The maximum width allowed for this code.
     max_width: usize,
+}
+
+impl Context {
+    fn new(indent: usize, max_width: usize) -> Self {
+        Self { indent, max_width }
+    }
+
+    fn max_width(&self) -> usize {
+        self.max_width
+    }
+
+    fn indent(&self) -> String {
+        " ".repeat(self.indent)
+    }
+
+    fn str_within_max_width(&self, s: &str) -> bool {
+        s.len() <= self.max_width
+    }
 }
 
 trait Rewrite {
@@ -38,6 +57,14 @@ trait Rewrite {
 //    if parent is same precedence:
 //          if i am on same side as parent associativity: no
 //          if i am on wrong side of parent associativity: yes
+
+// does my child need parenthesis?
+// 1. if child is higher, no
+// 2. if child is lower, yes
+// 3. if child is equal:
+//    if i have no associativity, yes
+//    if child is on the same side as my associativity, no
+//    if child is on the wrong side as my associativity, yes
 
 //"(if (true) utilsAssert else parseRef).params(if (true) true else false)"
 //left if requires parens, right if does not
@@ -99,8 +126,8 @@ macro_rules! impl_line_and_lines_for {
 
 fn group_line_if_necessary(
     line: Line,
-    line_precedence: Option<u8>,
-    compare_precedence: Option<u8>,
+    line_precedence: Option<usize>,
+    compare_precedence: Option<usize>,
 ) -> Line {
     match (line_precedence, compare_precedence) {
         (Some(line_prec), Some(compare_prec)) => {
@@ -116,8 +143,8 @@ fn group_line_if_necessary(
 
 fn group_line_with_precedence_if_necessary(
     line: Line,
-    line_precedence: u8,
-    compare_precedence: u8,
+    line_precedence: usize,
+    compare_precedence: usize,
 ) -> Line {
     use std::cmp::Ordering;
 
@@ -202,7 +229,58 @@ pub struct BinOp {
 
 impl PartialEq for BinOp {
     fn eq(&self, other: &Self) -> bool {
-        self.lhs == other.lhs && self.bin_op_id == other.bin_op_id && self.rhs == other.rhs
+        self.lhs == other.lhs
+            && self.bin_op_id == other.bin_op_id
+            && self.rhs == other.rhs
+    }
+}
+
+impl Rewrite for BinOp {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        // TODO: this only rewrites to a single line,
+        // when it could rewrite to multiple lines.
+
+        let left_needs_parens = self.needs_parens(true);
+        let right_needs_parens = self.needs_parens(false);
+        let child_context = Context::new(0, MAX_WIDTH);
+        let mut ls = self
+            .lhs
+            .rewrite(child_context)
+            .expect("BinOp LHS exceeds MAX_WIDTH");
+        if left_needs_parens {
+            ls = format!("({})", ls);
+        }
+        let mut rs = self
+            .rhs
+            .rewrite(child_context)
+            .expect("BinOp RHS exceeds MAX_WIDTH");
+        if right_needs_parens {
+            rs = format!("({})", rs);
+        }
+        let new_code = format!("{} {} {}", ls, self.bin_op_id.to_symbol(), rs);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+fn needs_parens(
+    parent_precedence: usize,
+    parent_assoc: Option<Associativity>,
+    child_precedence: usize,
+    child_is_left: bool,
+) -> bool {
+    if child_precedence > parent_precedence {
+        false
+    } else if child_precedence < parent_precedence || parent_assoc.is_none() {
+        true
+    } else {
+        let parent_assoc = parent_assoc.unwrap();
+        let both_left = parent_assoc == Associativity::Left && child_is_left;
+        let both_right = parent_assoc == Associativity::Right && !child_is_left;
+        both_left || both_right
     }
 }
 
@@ -218,12 +296,78 @@ impl BinOp {
 
     /// Returns an int representing how high the operator's precendence is,
     /// where 2 is the highest precedence for a binary operation.
-    pub fn precedence(&self) -> u8 {
+    pub fn precedence(&self) -> usize {
         self.bin_op_id.precedence()
     }
 
     pub fn associativity(&self) -> Option<Associativity> {
         self.bin_op_id.associativity()
+    }
+
+    fn needs_parens(&self, is_left: bool) -> bool {
+        let prec = self.precedence();
+        let assoc = self.associativity();
+
+        match &self.lhs {
+            Expr::Add(add) => {
+                needs_parens(prec, assoc, add.0.precedence(), is_left)
+            }
+            Expr::And(and) => {
+                needs_parens(prec, assoc, and.0.precedence(), is_left)
+            }
+            Expr::Cmp(cmp) => {
+                needs_parens(prec, assoc, cmp.0.precedence(), is_left)
+            }
+            Expr::Div(div) => {
+                needs_parens(prec, assoc, div.0.precedence(), is_left)
+            }
+            Expr::Eq(eq) => {
+                needs_parens(prec, assoc, eq.0.precedence(), is_left)
+            }
+            Expr::Gt(gt) => {
+                needs_parens(prec, assoc, gt.0.precedence(), is_left)
+            }
+            Expr::Gte(gte) => {
+                needs_parens(prec, assoc, gte.0.precedence(), is_left)
+            }
+            Expr::Lt(lt) => {
+                needs_parens(prec, assoc, lt.0.precedence(), is_left)
+            }
+            Expr::Lte(lte) => {
+                needs_parens(prec, assoc, lte.0.precedence(), is_left)
+            }
+            Expr::Mul(mul) => {
+                needs_parens(prec, assoc, mul.0.precedence(), is_left)
+            }
+            Expr::Ne(ne) => {
+                needs_parens(prec, assoc, ne.0.precedence(), is_left)
+            }
+            Expr::Or(or) => {
+                needs_parens(prec, assoc, or.0.precedence(), is_left)
+            }
+            Expr::Sub(sub) => {
+                needs_parens(prec, assoc, sub.0.precedence(), is_left)
+            }
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => false,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => false,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => false,
+            Expr::Not(_) => false,
+            Expr::PartialCall(_) => false,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => true,
+            Expr::TryCatch(_) => true,
+        }
     }
 }
 
@@ -307,7 +451,7 @@ impl BinOpId {
 
     /// Returns an int representing how high the operator's precendence is,
     /// where 20 is the highest precedence for a binary operation.
-    pub fn precedence(&self) -> u8 {
+    pub fn precedence(&self) -> usize {
         match self {
             Self::Add => 30,
             Self::And => 60,
@@ -417,7 +561,7 @@ impl Neg {
     pub fn new(operand: Expr) -> Neg {
         Self {
             id: Uuid::new_v4(),
-            operand
+            operand,
         }
     }
 
@@ -460,7 +604,9 @@ pub struct TryCatch {
 
 impl PartialEq for TryCatch {
     fn eq(&self, other: &Self) -> bool {
-        self.try_expr == other.try_expr && self.exception_name == other.exception_name && self.catch_expr == other.catch_expr
+        self.try_expr == other.try_expr
+            && self.exception_name == other.exception_name
+            && self.catch_expr == other.catch_expr
     }
 }
 
@@ -690,7 +836,11 @@ impl PartialEq for ConditionalExpr {
 
 impl ConditionalExpr {
     pub fn new(cond: Expr, expr: Expr) -> Self {
-        Self {             id: Uuid::new_v4(),cond, expr }
+        Self {
+            id: Uuid::new_v4(),
+            cond,
+            expr,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -737,7 +887,9 @@ pub struct If {
 
 impl PartialEq for If {
     fn eq(&self, other: &Self) -> bool {
-        self.cond == other.cond && self.if_expr == other.if_expr && self.else_expr == other.else_expr
+        self.cond == other.cond
+            && self.if_expr == other.if_expr
+            && self.else_expr == other.else_expr
     }
 }
 
@@ -826,7 +978,11 @@ impl PartialEq for TrapCall {
 
 impl TrapCall {
     pub fn new(target: Expr, key: String) -> Self {
-        Self {             id: Uuid::new_v4(),target, key }
+        Self {
+            id: Uuid::new_v4(),
+            target,
+            key,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -891,7 +1047,9 @@ pub struct DotCall {
 
 impl PartialEq for DotCall {
     fn eq(&self, other: &Self) -> bool {
-        self.func_name == other.func_name && self.target == other.target && self.args == other.args
+        self.func_name == other.func_name
+            && self.target == other.target
+            && self.args == other.args
     }
 }
 
@@ -1105,7 +1263,11 @@ impl PartialEq for PartialCall {
 
 impl PartialCall {
     pub fn new(func_name: FuncName, args: Vec<PartialCallArgument>) -> Self {
-        Self { id: Uuid::new_v4(),func_name, args }
+        Self {
+            id: Uuid::new_v4(),
+            func_name,
+            args,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1321,7 +1483,11 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
 
 impl Call {
     pub fn new(target: CallTarget, args: Vec<Expr>) -> Self {
-        Self { id: Uuid::new_v4(),target, args }
+        Self {
+            id: Uuid::new_v4(),
+            target,
+            args,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1410,7 +1576,10 @@ impl PartialEq for Not {
 
 impl Not {
     pub fn new(operand: Expr) -> Self {
-        Self { id: Uuid::new_v4(),operand }
+        Self {
+            id: Uuid::new_v4(),
+            operand,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1464,7 +1633,11 @@ impl PartialEq for Range {
 
 impl Range {
     pub fn new(start: Expr, end: Expr) -> Self {
-        Self {id: Uuid::new_v4(), start, end }
+        Self {
+            id: Uuid::new_v4(),
+            start,
+            end,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1514,7 +1687,11 @@ impl PartialEq for Func {
 
 impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
-        Self { id: Uuid::new_v4(),params, body }
+        Self {
+            id: Uuid::new_v4(),
+            params,
+            body,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1583,9 +1760,9 @@ pub struct Block {
     pub exprs: Vec<Expr>,
 }
 impl PartialEq for Block {
-fn eq(&self, other: &Self) -> bool {
-    self.exprs == other.exprs
-}
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
 }
 
 fn zero_indent() -> Indent {
@@ -1616,7 +1793,10 @@ fn separated_exprs_line(
 
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
-        Self { id: Uuid::new_v4(),exprs }
+        Self {
+            id: Uuid::new_v4(),
+            exprs,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1673,7 +1853,10 @@ impl PartialEq for Dict {
 
 impl Dict {
     pub fn new(map: HashMap<TagName, DictVal>) -> Self {
-        Self {id: Uuid::new_v4(), map }
+        Self {
+            id: Uuid::new_v4(),
+            map,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1891,7 +2074,10 @@ impl PartialEq for Return {
 
 impl Return {
     pub fn new(expr: Expr) -> Self {
-        Self { id: Uuid::new_v4(),expr }
+        Self {
+            id: Uuid::new_v4(),
+            expr,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1940,7 +2126,10 @@ impl PartialEq for Throw {
 
 impl Throw {
     pub fn new(expr: Expr) -> Self {
-        Self { id: Uuid::new_v4(),expr }
+        Self {
+            id: Uuid::new_v4(),
+            expr,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1989,7 +2178,10 @@ impl PartialEq for List {
 
 impl List {
     pub fn new(vals: Vec<Expr>) -> Self {
-        Self {id: Uuid::new_v4(), vals }
+        Self {
+            id: Uuid::new_v4(),
+            vals,
+        }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -2092,7 +2284,7 @@ pub enum Expr {
     Id(Id),
     If(Box<If>),
     List(List),
-    Lit(Lit),
+    Lit(Lit), //
     Neg(Box<Neg>),
     Not(Box<Not>),
     PartialCall(PartialCall),
@@ -2101,6 +2293,12 @@ pub enum Expr {
     Throw(Box<Throw>),
     TrapCall(Box<TrapCall>),
     TryCatch(Box<TryCatch>),
+}
+
+impl Rewrite for Expr {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        todo!()
+    }
 }
 
 /// Represents the indentation at the start of a line of Axon code.
@@ -2141,7 +2339,7 @@ impl Expr {
         matches!(self, Self::Func(_))
     }
 
-    pub fn id(&self) -> Uuid {
+    fn id(&self) -> Uuid {
         match self {
             Self::Add(add) => add.0.id,
             Self::And(and) => and.0.id,
@@ -2180,7 +2378,7 @@ impl Expr {
 
     /// May return an int representing how high the expression's precendence is,
     /// where 1 is the highest precedence.
-    pub fn precedence(&self) -> Option<u8> {
+    pub fn precedence(&self) -> Option<usize> {
         match self {
             Self::Add(add) => Some(add.0.precedence()),
             Self::And(and) => Some(and.0.precedence()),
@@ -2301,7 +2499,9 @@ impl Expr {
             }
             Self::If(iff) => iff.to_line(indent),
             Self::List(list) => list.to_line(indent),
-            Self::Lit(lit) => Line::new(indent.clone(), lit.lit().to_axon_code()),
+            Self::Lit(lit) => {
+                Line::new(indent.clone(), lit.lit().to_axon_code())
+            }
             Self::Neg(neg) => neg.to_line(indent),
             Self::Not(not) => not.to_line(indent),
             Self::PartialCall(partial_call) => partial_call.to_line(indent),
@@ -2755,6 +2955,19 @@ impl PartialEq for Lit {
     }
 }
 
+impl Rewrite for Lit {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let code = self.to_axon_code();
+        let new_code =
+            format!("{indent}{code}", indent = context.indent(), code = code);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
 impl Lit {
     pub fn new(lit: LitInner) -> Self {
         Self {
@@ -2765,6 +2978,10 @@ impl Lit {
 
     pub fn lit(&self) -> &LitInner {
         &self.lit
+    }
+
+    pub fn to_axon_code(&self) -> String {
+        self.lit().to_axon_code()
     }
 }
 
