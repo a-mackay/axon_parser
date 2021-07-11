@@ -1,9 +1,9 @@
-use crate::ast::{Associativity, BinOp, Expr, Id, Lit, Neg, Not};
+use crate::ast::{
+    Assign, Associativity, BinOp, Def, Expr, Id, Lit, Neg, Not, Return, Throw,
+};
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
-/// The maximum possible width. This value is arbitrary.
-const MAX_WIDTH: usize = 800;
 
 #[derive(Clone, Copy, Debug)]
 struct Context {
@@ -52,10 +52,10 @@ impl Rewrite for Expr {
             Self::Ne(x) => x.0.rewrite(context),
             Self::Or(x) => x.0.rewrite(context),
             Self::Sub(x) => x.0.rewrite(context),
-            // Self::Assign(_) => true,
+            Self::Assign(x) => x.rewrite(context),
             // Self::Block(_) => true,
             // Self::Call(_) => false,
-            // Self::Def(_) => true,
+            Self::Def(x) => x.rewrite(context),
             // Self::Dict(_) => false,
             // Self::DotCall(_) => false,
             // Self::Func(_) => true,
@@ -67,11 +67,61 @@ impl Rewrite for Expr {
             Self::Not(x) => x.rewrite(context),
             // Self::PartialCall(_) => false,
             // Self::Range(_) => true,
-            // Self::Return(_) => true,
-            // Self::Throw(_) => true,
+            Self::Return(x) => x.rewrite(context),
+            Self::Throw(x) => x.rewrite(context),
             // Self::TrapCall(_) => true,
             // Self::TryCatch(_) => true,
             _ => todo!(),
+        }
+    }
+}
+
+impl Rewrite for Assign {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let expr = self.expr.rewrite(context)?;
+        let prefix = format!("{} = ", self.name);
+        let new_code = add_after_leading_indent(&prefix, &expr);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl Rewrite for Def {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let expr = self.expr.rewrite(context)?;
+        let prefix = format!("{}: ", self.name);
+        let new_code = add_after_leading_indent(&prefix, &expr);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl Rewrite for Return {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let expr = self.expr.rewrite(context)?;
+        let new_code = add_after_leading_indent("return ", &expr);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl Rewrite for Throw {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let expr = self.expr.rewrite(context)?;
+        let new_code = add_after_leading_indent("throw ", &expr);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
         }
     }
 }
@@ -128,7 +178,6 @@ impl Rewrite for Neg {
         }
     }
 }
-
 
 impl Rewrite for Not {
     fn rewrite(&self, context: Context) -> Option<String> {
@@ -205,15 +254,11 @@ impl Rewrite for BinOp {
         let left_needs_parens = self.needs_parens(true);
         let right_needs_parens = self.needs_parens(false);
 
-        let mut ls = self
-            .lhs
-            .rewrite(context)?;
+        let mut ls = self.lhs.rewrite(context)?;
         if left_needs_parens {
             ls = add_parens(&ls);
         }
-        let mut rs = self
-            .rhs
-            .rewrite(context)?;
+        let mut rs = self.rhs.rewrite(context)?;
         if right_needs_parens {
             rs = add_parens(&rs);
         }
@@ -244,7 +289,7 @@ impl Rewrite for BinOp {
                         rhs = rs
                     )
                 }
-            },
+            }
             _ => {
                 format!(
                     "{lhs}\n{ind}{op} {rhs}",
@@ -253,7 +298,7 @@ impl Rewrite for BinOp {
                     op = op,
                     rhs = rs.trim_start()
                 )
-            },
+            }
         };
 
         if context.str_within_max_width(&new_code) {
@@ -373,12 +418,14 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Neg, Not, Sub,
+        Add, And, Assign, BinOp, BinOpId, Def, Expr, Id, Lit, LitInner, Mul,
+        Neg, Not, Return, Sub, Throw,
     };
     use raystack_core::{Number, TagName};
 
     fn c() -> Context {
-        Context::new(0, MAX_WIDTH)
+        let large_width = 800;
+        Context::new(0, large_width)
     }
 
     // new context
@@ -568,6 +615,58 @@ mod tests {
 
     #[test]
     fn not_multi_line_parens_works() {
+        todo!()
+    }
+
+    #[test]
+    fn assign_single_line_works() {
+        let ass = Assign::new(tn("a"), ex_lit_num(0));
+        let ass = Expr::Assign(ass);
+        let code = ass.rewrite(c()).unwrap();
+        assert_eq!(code, "a = 0");
+    }
+
+    #[test]
+    fn assign_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn def_single_line_works() {
+        let def = Def::new(tn("a"), ex_lit_num(0));
+        let def = Expr::Def(def);
+        let code = def.rewrite(c()).unwrap();
+        assert_eq!(code, "a: 0");
+    }
+
+    #[test]
+    fn def_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn return_single_line_works() {
+        let ret = Return::new(ex_lit_num(0));
+        let ret = Expr::Return(Box::new(ret));
+        let code = ret.rewrite(c()).unwrap();
+        assert_eq!(code, "return 0");
+    }
+
+    #[test]
+    fn return_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn throw_single_line_works() {
+        let thr = Throw::new(ex_lit_num(0));
+        let thr = Expr::Throw(Box::new(thr));
+        let code = thr.rewrite(c()).unwrap();
+        assert_eq!(code, "throw 0");
+    }
+
+    #[test]
+    fn throw_multi_line_works() {
         todo!()
     }
 }
