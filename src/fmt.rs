@@ -80,37 +80,77 @@ trait Rewrite {
     fn rewrite(&self, context: Context) -> Option<String>;
 }
 
+/// Add parentheses surrounding the rewritten code, properly
+/// accounting for possible indentation at the start and possible
+/// newline characters at the end.
+fn add_parens(code: &str) -> String {
+    let ind_count = code.chars().take_while(|&c| c == ' ').count();
+    let ind = " ".repeat(ind_count);
+    let last_char = code
+        .chars()
+        .last()
+        .expect("rewritten code should not be empty");
+    let ends_with_newline = last_char == '\n';
+
+    if ends_with_newline {
+        // We assume that final newline is the only trailing whitespace.
+        format!("{ind}({code})\n", ind = ind, code = code.trim())
+    } else {
+        format!("{ind}({code})", ind = ind, code = code.trim())
+    }
+}
+
+fn is_one_line(s: &str) -> bool {
+    s.lines().count() == 1
+}
+
 impl Rewrite for BinOp {
     fn rewrite(&self, context: Context) -> Option<String> {
-        // TODO: this only rewrites to a single line,
-        // when it could rewrite to multiple lines.
-
         let left_needs_parens = self.needs_parens(true);
         let right_needs_parens = self.needs_parens(false);
 
-        let child_context = Context::new(0, MAX_WIDTH);
         let mut ls = self
             .lhs
-            .rewrite(child_context)
-            .expect("BinOp LHS exceeds MAX_WIDTH");
+            .rewrite(context)?;
         if left_needs_parens {
-            ls = format!("({})", ls);
+            ls = add_parens(&ls);
         }
         let mut rs = self
             .rhs
-            .rewrite(child_context)
-            .expect("BinOp RHS exceeds MAX_WIDTH");
+            .rewrite(context)?;
         if right_needs_parens {
-            rs = format!("({})", rs);
+            rs = add_parens(&rs);
         }
         let ind = context.indent();
-        let new_code = format!(
-            "{ind}{lhs} {op} {rhs}",
-            ind = ind,
-            lhs = ls,
-            op = self.bin_op_id.to_symbol(),
-            rhs = rs
-        );
+
+        let new_code = match (is_one_line(&ls), is_one_line(&rs)) {
+            (true, true) => {
+                // Because these are one-liners, we can safely trim:
+                let ls = ls.trim();
+                let rs = rs.trim();
+                let line = format!(
+                    "{ind}{lhs} {op} {rhs}",
+                    ind = ind,
+                    lhs = ls,
+                    op = self.bin_op_id.to_symbol(),
+                    rhs = rs
+                );
+                if context.str_within_max_width(&line) {
+                    line
+                } else {
+                    // Single line was too wide:
+                    format!(
+                        "{ind}{lhs}\n{ind}{op} {rhs}",
+                        ind = ind,
+                        lhs = ls,
+                        op = self.bin_op_id.to_symbol(),
+                        rhs = rs
+                    )
+                }
+            },
+            _ => todo!()
+        };
+
         if context.str_within_max_width(&new_code) {
             Some(new_code)
         } else {
@@ -236,6 +276,11 @@ mod tests {
         Context::new(0, MAX_WIDTH)
     }
 
+    // new context
+    fn nc(indent: usize, max_width: usize) -> Context {
+        Context::new(indent, max_width)
+    }
+
     fn lit_num(n: usize) -> Lit {
         let num = Number::new(n as f64, None);
         let inner = LitInner::Num(num);
@@ -329,5 +374,36 @@ mod tests {
 
         let code = and_r.rewrite(c()).unwrap();
         assert_eq!(code, "(a and b) and c")
+    }
+
+    #[test]
+    fn bin_op_single_line_too_wide_works() {
+        let add = BinOp::new(ex_lit_num(10), BinOpId::Add, ex_lit_num(2));
+        let add = Expr::Add(Box::new(Add(add)));
+
+        let code = add.rewrite(nc(4, 7)).unwrap();
+        assert_eq!(code, "    10\n    + 2")
+    }
+
+    #[test]
+    fn bin_op_single_line_with_precedence_too_wide_works_1() {
+        let add = BinOp::new(ex_lit_num(1), BinOpId::Add, ex_lit_num(2));
+        let add = Expr::Add(Box::new(Add(add)));
+        let mul = BinOp::new(add, BinOpId::Mul, ex_lit_num(3));
+        let mul = Expr::Mul(Box::new(Mul(mul)));
+
+        let code = mul.rewrite(nc(4, 11)).unwrap();
+        assert_eq!(code, "    (1 + 2)\n    * 3")
+    }
+
+    #[test]
+    fn bin_op_single_line_with_precedence_too_wide_works_2() {
+        let add = BinOp::new(ex_lit_num(1), BinOpId::Add, ex_lit_num(2));
+        let add = Expr::Add(Box::new(Add(add)));
+        let mul = BinOp::new(add, BinOpId::Mul, ex_lit_num(3));
+        let mul = Expr::Mul(Box::new(Mul(mul)));
+
+        // 10 max width isn't wide enough
+        assert!(mul.rewrite(nc(4, 10)).is_none());
     }
 }
