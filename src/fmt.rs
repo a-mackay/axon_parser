@@ -1,5 +1,5 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Def, Expr, Id, Lit, Neg, Not, Return, Throw,
+    Assign, Associativity, BinOp, Def, Expr, Id, Lit, Neg, Not, Range, Return, Throw,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -33,6 +33,53 @@ impl Context {
             .reduce(std::cmp::max)
             .expect("s is a rewritten str, it shouldn't be empty so lines shouldn't be empty");
         max_len <= self.max_width
+    }
+}
+
+impl Rewrite for Range {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let start_needs_parens = Self::needs_parens(&self.start);
+        let end_needs_parens = Self::needs_parens(&self.end);
+        let start = self.start.rewrite(context)
+    }
+}
+
+impl Range {
+    fn needs_parens(expr: &Expr) -> bool {
+        match expr {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => true,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => true,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => false,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => true,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => true,
+            Expr::TryCatch(_) => true,
+        }
     }
 }
 
