@@ -1,4 +1,4 @@
-use crate::ast::{Associativity, BinOp, Expr, Id, Lit};
+use crate::ast::{Associativity, BinOp, Expr, Id, Lit, Neg, Not};
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
@@ -63,8 +63,8 @@ impl Rewrite for Expr {
             // Self::If(_) => true,
             // Self::List(_) => false,
             Self::Lit(x) => x.rewrite(context),
-            // Self::Neg(_) => false,
-            // Self::Not(_) => false,
+            Self::Neg(x) => x.rewrite(context),
+            Self::Not(x) => x.rewrite(context),
             // Self::PartialCall(_) => false,
             // Self::Range(_) => true,
             // Self::Return(_) => true,
@@ -80,6 +80,105 @@ trait Rewrite {
     fn rewrite(&self, context: Context) -> Option<String>;
 }
 
+impl Rewrite for Neg {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let needs_parens = match &self.operand {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => true,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => true,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => true,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => true,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => false,
+            Expr::TryCatch(_) => true,
+        };
+        let mut op = self.operand.rewrite(context)?;
+        if needs_parens {
+            op = add_parens(&op);
+        }
+        let new_code = add_after_leading_indent("-", &op);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+
+impl Rewrite for Not {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let needs_parens = match &self.operand {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => true,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => true,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => true,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => true,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => false,
+            Expr::TryCatch(_) => true,
+        };
+        let mut op = self.operand.rewrite(context)?;
+        if needs_parens {
+            op = add_parens(&op);
+        }
+        let new_code = add_after_leading_indent("not ", &op);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
 /// Add parentheses surrounding the rewritten code, properly
 /// accounting for possible indentation at the start.
 /// We assume the rewritten code has no trailing whitespace.
@@ -87,6 +186,14 @@ fn add_parens(code: &str) -> String {
     let ind_count = code.chars().take_while(|&c| c == ' ').count();
     let ind = " ".repeat(ind_count);
     format!("{ind}({code})", ind = ind, code = code.trim())
+}
+
+/// Add s to the start of the rewritten code, properly
+/// accounting for possible indentation at the start.
+fn add_after_leading_indent(s: &str, code: &str) -> String {
+    let ind_count = code.chars().take_while(|&c| c == ' ').count();
+    let ind = " ".repeat(ind_count);
+    format!("{ind}{s}{code}", ind = ind, s = s, code = code.trim_start())
 }
 
 fn is_one_line(s: &str) -> bool {
@@ -111,6 +218,7 @@ impl Rewrite for BinOp {
             rs = add_parens(&rs);
         }
         let ind = context.indent();
+        let op = self.bin_op_id.to_symbol();
 
         let new_code = match (is_one_line(&ls), is_one_line(&rs)) {
             (true, true) => {
@@ -121,7 +229,7 @@ impl Rewrite for BinOp {
                     "{ind}{lhs} {op} {rhs}",
                     ind = ind,
                     lhs = ls,
-                    op = self.bin_op_id.to_symbol(),
+                    op = op,
                     rhs = rs
                 );
                 if context.str_within_max_width(&line) {
@@ -132,7 +240,7 @@ impl Rewrite for BinOp {
                         "{ind}{lhs}\n{ind}{op} {rhs}",
                         ind = ind,
                         lhs = ls,
-                        op = self.bin_op_id.to_symbol(),
+                        op = op,
                         rhs = rs
                     )
                 }
@@ -142,7 +250,7 @@ impl Rewrite for BinOp {
                     "{lhs}\n{ind}{op} {rhs}",
                     ind = ind,
                     lhs = ls,
-                    op = self.bin_op_id.to_symbol(),
+                    op = op,
                     rhs = rs.trim_start()
                 )
             },
@@ -265,7 +373,7 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Sub,
+        Add, And, BinOp, BinOpId, Expr, Id, Lit, LitInner, Mul, Neg, Not, Sub,
     };
     use raystack_core::{Number, TagName};
 
@@ -276,6 +384,15 @@ mod tests {
     // new context
     fn nc(indent: usize, max_width: usize) -> Context {
         Context::new(indent, max_width)
+    }
+
+    fn lit_bool(b: bool) -> Lit {
+        let inner = LitInner::Bool(b);
+        Lit::new(inner)
+    }
+
+    fn ex_lit_bool(b: bool) -> Expr {
+        Expr::Lit(lit_bool(b))
     }
 
     fn lit_num(n: usize) -> Lit {
@@ -402,5 +519,55 @@ mod tests {
 
         // 10 max width isn't wide enough
         assert!(mul.rewrite(nc(4, 10)).is_none());
+    }
+
+    #[test]
+    fn neg_single_line_works() {
+        let neg = Neg::new(ex_lit_num(1));
+        let code = neg.rewrite(c()).unwrap();
+        assert_eq!(code, "-1");
+    }
+
+    #[test]
+    fn neg_single_line_parens_works() {
+        let neg = Neg::new(ex_lit_num(1));
+        let neg = Neg::new(Expr::Neg(Box::new(neg)));
+        let code = neg.rewrite(c()).unwrap();
+        assert_eq!(code, "-(-1)");
+    }
+
+    #[test]
+    fn neg_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn neg_multi_line_parens_works() {
+        todo!()
+    }
+
+    #[test]
+    fn not_single_line_works() {
+        let not = Not::new(ex_lit_bool(true));
+        let code = not.rewrite(c()).unwrap();
+        assert_eq!(code, "not true");
+    }
+
+    #[test]
+    fn not_single_line_parens_works() {
+        let not = Not::new(ex_lit_bool(true));
+        let not = Not::new(Expr::Not(Box::new(not)));
+        let code = not.rewrite(c()).unwrap();
+        assert_eq!(code, "not (not true)");
+    }
+
+    #[test]
+    fn not_multi_line_works() {
+        todo!()
+    }
+
+    #[test]
+    fn not_multi_line_parens_works() {
+        todo!()
     }
 }
