@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Def, Expr, Id, List, Lit, Neg, Not, Range,
-    Return, Throw,
+    Assign, Associativity, BinOp, Def, Dict, DictVal, Expr, Id, List, Lit, Neg,
+    Not, Range, Return, Throw,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -38,6 +38,127 @@ impl Context {
 
     fn increase_indent(&self) -> Context {
         Context::new(self.indent + SPACES, self.max_width())
+    }
+}
+
+impl Rewrite for DictVal {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let ind = context.indent();
+        let new_code = match self {
+            DictVal::Expr(expr) => expr.rewrite(context)?,
+            DictVal::Marker => format!("{ind}marker()", ind = ind),
+            DictVal::RemoveMarker => format!("{ind}removeMarker()", ind = ind),
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl Rewrite for Dict {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let pairs = self.pairs();
+        let ind = context.indent();
+
+        let new_code = if pairs.is_empty() {
+            format!("{ind}{{}}", ind = ind)
+        } else {
+            // Try fit the entire dict on one line:
+            let one_line_context =
+                Context::new(context.indent, context.max_width() - 2);
+            let pairs: Option<Vec<String>> = pairs
+                .iter()
+                .map(|(name, value)| {
+                    value.rewrite(one_line_context).map(|code| {
+                        let prefix = format!("{}: ", name);
+                        add_after_leading_indent(&prefix, &code)
+                    })
+                })
+                .collect();
+
+            match pairs {
+                Some(pairs) => {
+                    let pairs = pairs
+                        .iter()
+                        .map(|item| item.trim())
+                        .collect::<Vec<_>>();
+                    let pairs_str = pairs.join(", ");
+                    // There was enough space for each expression to be
+                    // rewritten, so we see if it fits on one line:
+                    let one_line = format!(
+                        "{ind}{{{pairs}}}",
+                        ind = ind,
+                        pairs = pairs_str
+                    );
+
+                    if context.str_within_max_width(&one_line) {
+                        one_line
+                    } else {
+                        self.default_rewrite(context)?
+                    }
+                }
+                None => self.default_rewrite(context)?,
+            }
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl Dict {
+    /// Write the dict over multiple lines, each name/value pair is indented
+    /// under the dict brackets.
+    fn default_rewrite(&self, context: Context) -> Option<String> {
+        let ind = context.indent();
+        let pairs = self.pairs();
+        let pairs_context = context.increase_indent();
+        let pairs: Option<Vec<String>> = pairs
+            .into_iter()
+            .map(|(name, value)| {
+                let code = value.rewrite(pairs_context);
+                let prefix = format!("{}: ", name);
+                code.map(|code| {
+                    let code = add_after_leading_indent(&prefix, &code);
+                    format!("{},\n", code)
+                })
+                .and_then(|pair_str| {
+                    // pair_str is something like tagName: "some value"
+                    if context.str_within_max_width(&pair_str) {
+                        Some(pair_str)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        let pairs = pairs?;
+        let pairs_str = pairs.join("");
+
+        let new_code =
+            format!("{ind}{{\n{pairs}{ind}}}", ind = ind, pairs = pairs_str);
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+
+    fn pairs(&self) -> Vec<(String, DictVal)> {
+        let mut pairs = self
+            .map
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.clone()))
+            .collect::<Vec<_>>();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        pairs
     }
 }
 
@@ -85,8 +206,8 @@ impl Rewrite for List {
 }
 
 impl List {
-    /// Write the list over multiple lines, each line containing one
-    /// list element.
+    /// Write the list over multiple lines, each element is
+    /// indented under the list brackets.
     fn default_rewrite(&self, context: Context) -> Option<String> {
         let exprs = &self.vals[..];
         let ind = context.indent();
@@ -220,7 +341,7 @@ impl Rewrite for Expr {
             // Self::Block(_) => true,
             // Self::Call(_) => false,
             Self::Def(x) => x.rewrite(context),
-            // Self::Dict(_) => false,
+            Self::Dict(x) => x.rewrite(context),
             // Self::DotCall(_) => false,
             // Self::Func(_) => true,
             Self::Id(x) => x.rewrite(context),
@@ -582,10 +703,11 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Def, Expr, Id, List, Lit, LitInner,
-        Mul, Neg, Not, Return, Sub, Throw,
+        Add, And, Assign, BinOp, BinOpId, Def, Dict, Expr, Id, List, Lit,
+        LitInner, Mul, Neg, Not, Return, Sub, Throw,
     };
     use raystack_core::{Number, TagName};
+    use std::collections::HashMap;
 
     fn c() -> Context {
         let large_width = 800;
@@ -908,5 +1030,45 @@ mod tests {
             code,
             "    [\n        100,\n        200,\n        300,\n    ]"
         );
+    }
+
+    fn dict(items: Vec<(&str, DictVal)>) -> Dict {
+        let mut map = HashMap::new();
+        for (name, value) in items {
+            map.insert(tn(name), value);
+        }
+        Dict::new(map)
+    }
+
+    #[test]
+    fn dict_one_line_works() {
+        let dict = dict(vec![
+            ("xyz", DictVal::Expr(ex_lit_num(10))),
+            ("abc", DictVal::Marker),
+            ("def", DictVal::RemoveMarker),
+        ]);
+        let code = dict.rewrite(c()).unwrap();
+        assert_eq!(code, "{abc: marker(), def: removeMarker(), xyz: 10}")
+    }
+
+    #[test]
+    fn dict_multi_line_works() {
+        let dict = dict(vec![
+            ("xyz", DictVal::Expr(ex_lit_num(10))),
+            ("abc", DictVal::Marker),
+            ("def", DictVal::RemoveMarker),
+        ]);
+        let code = dict.rewrite(nc(1, 25)).unwrap();
+        assert_eq!(code, " {\n     abc: marker(),\n     def: removeMarker(),\n     xyz: 10,\n }")
+    }
+
+    #[test]
+    fn dict_multi_line_not_enough_space_works() {
+        let dict = dict(vec![
+            ("xyz", DictVal::Expr(ex_lit_num(10))),
+            ("abc", DictVal::Marker),
+            ("def", DictVal::RemoveMarker),
+        ]);
+        assert!(dict.rewrite(nc(1, 24)).is_none());
     }
 }
