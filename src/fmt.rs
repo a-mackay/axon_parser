@@ -804,7 +804,10 @@ mod tests {
 
     #[test]
     fn assign_multi_line_works() {
-        todo!()
+        let ass = Assign::new(tn("a"), longish_list());
+        let ass = Expr::Assign(ass);
+        let code = ass.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " a = [\n     1000,\n     2000,\n     3000,\n ]")
     }
 
     #[test]
@@ -817,7 +820,10 @@ mod tests {
 
     #[test]
     fn def_multi_line_works() {
-        todo!()
+        let def = Def::new(tn("a"), longish_list());
+        let def = Expr::Def(def);
+        let code = def.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " a: [\n     1000,\n     2000,\n     3000,\n ]")
     }
 
     #[test]
@@ -830,7 +836,10 @@ mod tests {
 
     #[test]
     fn return_multi_line_works() {
-        todo!()
+        let ret = Return::new(longish_list());
+        let ret = Expr::Return(Box::new(ret));
+        let code = ret.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " return [\n     1000,\n     2000,\n     3000,\n ]")
     }
 
     #[test]
@@ -843,7 +852,10 @@ mod tests {
 
     #[test]
     fn throw_multi_line_works() {
-        todo!()
+        let throw = Throw::new(longish_list());
+        let throw = Expr::Throw(Box::new(throw));
+        let code = throw.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " throw [\n     1000,\n     2000,\n     3000,\n ]")
     }
 
     #[test]
