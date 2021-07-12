@@ -747,6 +747,14 @@ mod tests {
         assert_eq!(code, "-(-1)");
     }
 
+    fn longish_list() -> Expr {
+        Expr::List(List::new(vec![
+            ex_lit_num(1000),
+            ex_lit_num(2000),
+            ex_lit_num(3000),
+        ]))
+    }
+
     #[test]
     fn neg_multi_line_works() {
         todo!()
@@ -754,7 +762,9 @@ mod tests {
 
     #[test]
     fn neg_multi_line_parens_works() {
-        todo!()
+        let neg = Neg::new(longish_list());
+        let code = neg.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " -([\n     1000,\n     2000,\n     3000,\n ])")
     }
 
     #[test]
@@ -779,7 +789,9 @@ mod tests {
 
     #[test]
     fn not_multi_line_parens_works() {
-        todo!()
+        let not = Not::new(longish_list());
+        let code = not.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " not ([\n     1000,\n     2000,\n     3000,\n ])")
     }
 
     #[test]
