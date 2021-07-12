@@ -1,5 +1,6 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Def, Expr, Id, Lit, Neg, Not, Range, Return, Throw,
+    Assign, Associativity, BinOp, Def, Expr, Id, List, Lit, Neg, Not, Range,
+    Return, Throw,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -34,6 +35,80 @@ impl Context {
             .expect("s is a rewritten str, it shouldn't be empty so lines shouldn't be empty");
         max_len <= self.max_width
     }
+
+    fn increase_indent(&self) -> Context {
+        Context::new(self.indent + SPACES, self.max_width())
+    }
+}
+
+impl Rewrite for List {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let exprs = &self.vals[..];
+        let ind = context.indent();
+        let new_code = if exprs.is_empty() {
+            format!("{ind}[]", ind = ind)
+        } else {
+            // Try fit the entire list on one line:
+            let one_line_context =
+                Context::new(context.indent, context.max_width() - 2);
+            let items: Option<Vec<String>> =
+                exprs.iter().map(|e| e.rewrite(one_line_context)).collect();
+
+            match items {
+                Some(items) => {
+                    let items = items
+                        .iter()
+                        .map(|item| item.trim())
+                        .collect::<Vec<_>>();
+                    let items_str = items.join(", ");
+                    // There was enough space for each expression to be
+                    // rewritten, so we see if it fits on one line:
+                    let one_line =
+                        format!("{ind}[{items}]", ind = ind, items = items_str);
+
+                    if context.str_within_max_width(&one_line) {
+                        one_line
+                    } else {
+                        self.default_rewrite(context)?
+                    }
+                }
+                None => self.default_rewrite(context)?,
+            }
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+impl List {
+    /// Write the list over multiple lines, each line containing one
+    /// list element.
+    fn default_rewrite(&self, context: Context) -> Option<String> {
+        let exprs = &self.vals[..];
+        let ind = context.indent();
+        let items_context = context.increase_indent();
+        let items: Option<Vec<String>> = exprs
+            .iter()
+            .map(|expr| {
+                expr.rewrite(items_context)
+                    .map(|string| format!("{},\n", string))
+            })
+            .collect();
+        let items = items?;
+        let items_str = items.join("");
+        let new_code =
+            format!("{ind}[\n{items}{ind}]", ind = ind, items = items_str);
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
 }
 
 impl Rewrite for Range {
@@ -50,18 +125,32 @@ impl Rewrite for Range {
         }
         let new_code = match (is_one_line(&start), is_one_line(&end)) {
             (true, true) => {
-                let one_line = format!("{start}..{end}", start = start, end = end.trim_start());
+                let one_line = format!(
+                    "{start}..{end}",
+                    start = start,
+                    end = end.trim_start()
+                );
                 if context.str_within_max_width(&one_line) {
                     one_line
                 } else {
                     let ind = context.indent();
-                    format!("{start}\n{ind}..\n{end}", start = start, ind = ind, end = end)
+                    format!(
+                        "{start}\n{ind}..\n{end}",
+                        start = start,
+                        ind = ind,
+                        end = end
+                    )
                 }
-            },
+            }
             _ => {
                 let ind = context.indent();
-                format!("{start}\n{ind}..\n{end}", start = start, ind = ind, end = end)
-            },
+                format!(
+                    "{start}\n{ind}..\n{end}",
+                    start = start,
+                    ind = ind,
+                    end = end
+                )
+            }
         };
 
         if context.str_within_max_width(&new_code) {
@@ -136,7 +225,7 @@ impl Rewrite for Expr {
             // Self::Func(_) => true,
             Self::Id(x) => x.rewrite(context),
             // Self::If(_) => true,
-            // Self::List(_) => false,
+            Self::List(x) => x.rewrite(context),
             Self::Lit(x) => x.rewrite(context),
             Self::Neg(x) => x.rewrite(context),
             Self::Not(x) => x.rewrite(context),
@@ -493,8 +582,8 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Def, Expr, Id, Lit, LitInner, Mul,
-        Neg, Not, Return, Sub, Throw,
+        Add, And, Assign, BinOp, BinOpId, Def, Expr, Id, List, Lit, LitInner,
+        Mul, Neg, Not, Return, Sub, Throw,
     };
     use raystack_core::{Number, TagName};
 
@@ -766,5 +855,34 @@ mod tests {
     #[test]
     fn range_multi_line_works() {
         todo!()
+    }
+
+    #[test]
+    fn list_empty_works() {
+        let list = List::new(vec![]);
+        let code = list.rewrite(c()).unwrap();
+        assert_eq!(code, "[]");
+    }
+
+    #[test]
+    fn list_one_line_works() {
+        let list = List::new(vec![ex_lit_num(1)]);
+        let code = list.rewrite(c()).unwrap();
+        assert_eq!(code, "[1]");
+
+        let list = List::new(vec![ex_lit_num(1), ex_lit_num(2)]);
+        let code = list.rewrite(c()).unwrap();
+        assert_eq!(code, "[1, 2]");
+    }
+
+    #[test]
+    fn list_multi_line_works() {
+        let list =
+            List::new(vec![ex_lit_num(100), ex_lit_num(200), ex_lit_num(300)]);
+        let code = list.rewrite(nc(4, 14)).unwrap();
+        assert_eq!(
+            code,
+            "    [\n        100,\n        200,\n        300,\n    ]"
+        );
     }
 }
