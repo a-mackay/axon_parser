@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Def, Dict, DictVal, Expr, Id, List, Lit, Neg,
-    Not, Range, Return, Throw, TrapCall,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Id, List,
+    Lit, Neg, Not, Range, Return, Throw, TrapCall,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -338,7 +338,7 @@ impl Rewrite for Expr {
             Self::Or(x) => x.0.rewrite(context),
             Self::Sub(x) => x.0.rewrite(context),
             Self::Assign(x) => x.rewrite(context),
-            // Self::Block(_) => true,
+            Self::Block(x) => x.rewrite(context),
             // Self::Call(_) => false,
             Self::Def(x) => x.rewrite(context),
             Self::Dict(x) => x.rewrite(context),
@@ -357,6 +357,96 @@ impl Rewrite for Expr {
             Self::TrapCall(x) => x.rewrite(context),
             // Self::TryCatch(_) => true,
             _ => todo!(),
+        }
+    }
+}
+
+struct ExprAndCode {
+    expr: Expr,
+    code: String,
+}
+
+impl ExprAndCode {
+    fn new(expr: Expr, code: String) -> Self {
+        Self { expr, code }
+    }
+}
+
+/// Returns true if this expression should be followed by an additional newline
+/// character. For example, a Block should have a blank line before the following
+/// expression, for readability.
+fn needs_newline(expr: &Expr, next_expr: Option<&Expr>) -> bool {
+    let is_followed_by_expr = next_expr.is_some();
+    match expr {
+        Expr::Add(_) => false,
+        Expr::And(_) => false,
+        Expr::Cmp(_) => false,
+        Expr::Div(_) => false,
+        Expr::Eq(_) => false,
+        Expr::Gt(_) => false,
+        Expr::Gte(_) => false,
+        Expr::Lt(_) => false,
+        Expr::Lte(_) => false,
+        Expr::Mul(_) => false,
+        Expr::Ne(_) => false,
+        Expr::Or(_) => false,
+        Expr::Sub(_) => false,
+        Expr::Assign(_) => false,
+        Expr::Block(_) => is_followed_by_expr,
+        Expr::Call(_) => false,
+        Expr::Def(_) => false,
+        Expr::Dict(_) => false,
+        Expr::DotCall(_) => false,
+        Expr::Func(_) => is_followed_by_expr,
+        Expr::Id(_) => false,
+        Expr::If(_) => is_followed_by_expr,
+        Expr::List(_) => false,
+        Expr::Lit(_) => false,
+        Expr::Neg(_) => false,
+        Expr::Not(_) => false,
+        Expr::PartialCall(_) => false,
+        Expr::Range(_) => false,
+        Expr::Return(_) => false,
+        Expr::Throw(_) => false,
+        Expr::TrapCall(_) => false,
+        Expr::TryCatch(_) => is_followed_by_expr,
+    }
+}
+
+impl Rewrite for Block {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let exprs: &[Expr] = &self.exprs;
+        let ind = context.indent();
+        let expr_context = context.increase_indent();
+
+        let mut expr_codes = vec![];
+        for expr in exprs {
+            let code = expr.rewrite(expr_context)?;
+            let code = format!("{}\n", code);
+            expr_codes.push(ExprAndCode::new(expr.clone(), code));
+        }
+
+        let mut exprs_str: Vec<String> = vec![];
+        let mut iter = expr_codes.into_iter().peekable();
+        while let Some(expr_code) = iter.next() {
+            let expr = expr_code.expr;
+            let code = expr_code.code;
+            let next_expr = iter.peek().map(|ec| &ec.expr);
+            exprs_str.push(code);
+
+            if needs_newline(&expr, next_expr) {
+                exprs_str.push("\n".to_owned());
+            }
+        }
+
+        let exprs_str = exprs_str.join("");
+
+        let new_code =
+            format!("{ind}do\n{exprs}{ind}end", ind = ind, exprs = exprs_str);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
         }
     }
 }
@@ -756,8 +846,8 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Def, Dict, Expr, Id, List, Lit,
-        LitInner, Mul, Neg, Not, Return, Sub, Throw, TrapCall,
+        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, List,
+        Lit, LitInner, Mul, Neg, Not, Return, Sub, Throw, TrapCall,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -1142,5 +1232,35 @@ mod tests {
         let trap_call = TrapCall::new(dict, "trapped".to_owned());
         let code = trap_call.rewrite(nc(1, 25)).unwrap();
         assert_eq!(code, " {\n     abc: marker(),\n     def: removeMarker(),\n     xyz: 10,\n }->trapped");
+    }
+
+    #[test]
+    fn block_one_expr_works() {
+        let block = Expr::Block(Block::new(vec![ex_lit_num(0)]));
+        let code = block.rewrite(c()).unwrap();
+        assert_eq!(code, "do\n    0\nend")
+    }
+
+    #[test]
+    fn block_multi_expr_works() {
+        let block = Expr::Block(Block::new(vec![ex_lit_num(0), ex_lit_num(1)]));
+        let code = block.rewrite(c()).unwrap();
+        assert_eq!(code, "do\n    0\n    1\nend")
+    }
+
+    #[test]
+    fn block_multi_expr_with_newline_works() {
+        let nested_block =
+            Expr::Block(Block::new(vec![ex_id("iWantSpacingAfterThisBlock")]));
+        let block = Expr::Block(Block::new(vec![nested_block, ex_lit_num(0)]));
+        let code = block.rewrite(c()).unwrap();
+        let expected = "do
+    do
+        iWantSpacingAfterThisBlock
+    end
+
+    0
+end";
+        assert_eq!(code, expected);
     }
 }
