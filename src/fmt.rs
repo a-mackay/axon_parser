@@ -1755,7 +1755,7 @@ end";
         let iff2 = Expr::If(Box::new(If::new(ex_id("reallyLong"), ex_lit_num(2), None)));
         let iff1 = Expr::If(Box::new(If::new(ex_id("longer"), ex_lit_num(1), Some(iff2))));
         let iff0 = If::new(ex_id("short"), ex_lit_num(0), Some(iff1));
-        let code = iff0.rewrite(nc(4, 35)).unwrap();
+        let code = iff0.rewrite(nc(4, 31)).unwrap();
         let expected = "    if (short) do
         0
     end else if (longer) do
@@ -1764,8 +1764,26 @@ end";
         2
     end";
         assert_eq!(code, expected);
+    }
+
+    #[test]
+    fn if_nested_no_else_works_restricted_width() {
+        let iff2 = Expr::If(Box::new(If::new(ex_id("reallyLong"), ex_lit_num(2), None)));
+        let iff1 = Expr::If(Box::new(If::new(ex_id("longer"), ex_lit_num(1), Some(iff2))));
+        let iff0 = If::new(ex_id("short"), ex_lit_num(0), Some(iff1));
+        let code = iff0.rewrite(nc(4, 30)).unwrap(); // Note the reduced width
+        let expected = "    if (short) do
+        0
+    end else if (longer) do
+        1
+    end else if (
+        reallyLong
+    ) do
+        2
+    end";
+        assert_eq!(code, expected);
 
         // Also check it fails if there's not enough room:
-        assert!(iff0.rewrite(nc(4, 30)).is_none());
+        assert!(iff0.rewrite(nc(4, 17)).is_none());
     }
 }
