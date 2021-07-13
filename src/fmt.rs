@@ -1,6 +1,6 @@
 use crate::ast::{
     Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Func, Id,
-    List, Lit, Neg, Not, Range, Return, Throw, TrapCall,
+    List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -358,8 +358,77 @@ impl Rewrite for Expr {
             Self::Return(x) => x.rewrite(context),
             Self::Throw(x) => x.rewrite(context),
             Self::TrapCall(x) => x.rewrite(context),
-            // Self::TryCatch(_) => true,
+            Self::TryCatch(x) => x.rewrite(context),
             _ => todo!(),
+        }
+    }
+}
+
+impl Rewrite for TryCatch {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let one_line = self.rewrite_one_line(context);
+        if one_line.is_some() {
+            one_line
+        } else {
+            self.default_rewrite(context)
+        }
+    }
+}
+
+impl TryCatch {
+    /// Try to rewrite the expression to a single line.
+    fn rewrite_one_line(&self, context: Context) -> Option<String> {
+        let try_expr = self.try_expr.rewrite(context)?;
+        let catch_expr = self.catch_expr.rewrite(context)?;
+
+        match (is_one_line(&try_expr), is_one_line(&catch_expr)) {
+            (true, true) => match &self.exception_name {
+                Some(exception_name) => {
+                    let code = add_after_leading_indent("try ", &try_expr);
+                    let code = format!(
+                        "{} catch ({}) {}",
+                        code, exception_name, catch_expr
+                    );
+                    if context.str_within_max_width(&code) {
+                        Some(code)
+                    } else {
+                        None
+                    }
+                }
+                None => {
+                    let code = add_after_leading_indent("try ", &try_expr);
+                    let code = format!("{} catch {}", code, catch_expr);
+                    if context.str_within_max_width(&code) {
+                        Some(code)
+                    } else {
+                        None
+                    }
+                }
+            },
+            _ => None,
+        }
+    }
+
+    /// Rewrite over multiple lines.
+    fn default_rewrite(&self, context: Context) -> Option<String> {
+        let try_expr = self.try_expr.clone().blockify().rewrite(context)?;
+        let try_expr = add_after_leading_indent("try ", &try_expr);
+        let catch_expr = self.catch_expr.clone().blockify().rewrite(context)?;
+        let catch_expr = catch_expr.trim_start();
+
+        let new_code = match &self.exception_name {
+            Some(exception_name) => {
+                format!("{} catch ({}) {}", try_expr, exception_name, catch_expr)
+            },
+            None => {
+                format!("{} catch {}", try_expr, catch_expr)
+            }
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
         }
     }
 }
@@ -895,6 +964,7 @@ mod tests {
     use crate::ast::{
         Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, List,
         Lit, LitInner, Mul, Neg, Not, Param, Return, Sub, Throw, TrapCall,
+        TryCatch,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -1320,9 +1390,7 @@ end";
 
     #[test]
     fn func_with_one_param_works() {
-        let params = vec![
-            Param::new(tn("second"), Some(ex_lit_num(1))),
-        ];
+        let params = vec![Param::new(tn("second"), Some(ex_lit_num(1)))];
         let func = Func::new(params, ex_lit_num(0));
         let code = func.rewrite(c()).unwrap();
         assert_eq!(code, "(second: 1) => do\n    0\nend");
@@ -1348,5 +1416,33 @@ end";
         let func = Func::new(params, ex_lit_num(0));
         let code = func.rewrite(nc(1, 6)).unwrap();
         assert_eq!(code, " (first, second: 1) => do\n     0\n end");
+    }
+
+    #[test]
+    fn try_catch_one_line_works() {
+        let tc = TryCatch::new(ex_lit_num(0), None, ex_lit_num(1));
+        let code = tc.rewrite(c()).unwrap();
+        assert_eq!(code, "try 0 catch 1");
+    }
+
+    #[test]
+    fn try_catch_one_line_exception_works() {
+        let tc = TryCatch::new(ex_lit_num(0), Some("ex".to_owned()), ex_lit_num(1));
+        let code = tc.rewrite(c()).unwrap();
+        assert_eq!(code, "try 0 catch (ex) 1");
+    }
+
+    #[test]
+    fn try_catch_multi_line_works() {
+        let tc = TryCatch::new(ex_id("name"), None, ex_id("name2"));
+        let code = tc.rewrite(nc(1, 13)).unwrap();
+        assert_eq!(code, " try do\n     name\n end catch do\n     name2\n end");
+    }
+
+    #[test]
+    fn try_catch_multi_line_exception_works() {
+        let tc = TryCatch::new(ex_id("name"), Some("ex".to_owned()), ex_id("name2"));
+        let code = tc.rewrite(nc(1, 18)).unwrap();
+        assert_eq!(code, " try do\n     name\n end catch (ex) do\n     name2\n end");
     }
 }
