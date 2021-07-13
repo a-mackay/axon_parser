@@ -1,6 +1,7 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, FlatIf, Func, Id, If,
-    List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, FlatIf,
+    Func, Id, If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall,
+    TryCatch,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -415,34 +416,35 @@ impl FlatIf {
                         let cond = format!("{})", cond);
                         let if_expr = if_expr.trim();
                         let else_expr_str = else_expr_str.trim();
-                        let code = format!("{} {} else {}", cond, if_expr, else_expr_str);
+                        let code = format!(
+                            "{} {} else {}",
+                            cond, if_expr, else_expr_str
+                        );
 
                         if context.str_within_max_width(&code) {
                             Some(code)
                         } else {
                             None
                         }
-                    },
-                    _ => None
-                }
-            },
-            None => {
-                match (is_if_one, is_cond_one) {
-                    (true, true) => {
-                        let cond = add_after_leading_indent("if (", &cond);
-                        let cond = format!("{})", cond);
-                        let if_expr = if_expr.trim();
-                        let code = format!("{} {}", cond, if_expr);
-
-                        if context.str_within_max_width(&code) {
-                            Some(code)
-                        } else {
-                            None
-                        }
-                    },
-                    _ => None
+                    }
+                    _ => None,
                 }
             }
+            None => match (is_if_one, is_cond_one) {
+                (true, true) => {
+                    let cond = add_after_leading_indent("if (", &cond);
+                    let cond = format!("{})", cond);
+                    let if_expr = if_expr.trim();
+                    let code = format!("{} {}", cond, if_expr);
+
+                    if context.str_within_max_width(&code) {
+                        Some(code)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
         }
     }
 
@@ -490,7 +492,11 @@ impl FlatIf {
         for (index, cond_expr) in self.cond_exprs.iter().enumerate() {
             let is_first_cond = index == 0;
             let cond = cond_expr.cond.clone();
-            let cond_code = FlatIf::default_rewrite_cond(&cond_expr.cond, context, is_first_cond)?;
+            let cond_code = FlatIf::default_rewrite_cond(
+                &cond_expr.cond,
+                context,
+                is_first_cond,
+            )?;
             let expr = cond_expr.expr.clone().blockify();
             let expr_code = expr.rewrite(context)?;
             conds.push(CondExprAndCode::new(cond, cond_code, expr, expr_code));
@@ -512,7 +518,7 @@ impl FlatIf {
                 strs.push(strip_do_end_from_block(&else_expr_code));
                 strs.push(format!("{ind}end", ind = ind));
                 strs.join("\n")
-            },
+            }
             None => {
                 strs.push(format!("{ind}end", ind = ind));
                 strs.join("\n")
@@ -527,7 +533,11 @@ impl FlatIf {
     }
 
     // We assume each cond's related expression is a Block.
-    fn default_rewrite_cond(cond: &Expr, context: Context, is_first_cond: bool) -> Option<String> {
+    fn default_rewrite_cond(
+        cond: &Expr,
+        context: Context,
+        is_first_cond: bool,
+    ) -> Option<String> {
         let multi_line_context = context.increase_indent();
 
         // Try put the condition on one line first:
@@ -535,11 +545,7 @@ impl FlatIf {
         if let Some(code) = code {
             if is_one_line(&code) {
                 let code = add_parens(&code);
-                let prefix = if is_first_cond {
-                    "if "
-                } else {
-                    "end else if "
-                };
+                let prefix = if is_first_cond { "if " } else { "end else if " };
                 let code = add_after_leading_indent(prefix, &code);
                 let code = format!("{} do", code);
 
@@ -555,7 +561,11 @@ impl FlatIf {
         let code = if is_first_cond {
             format!("{ind}if (\n{cond}\n{ind}) do", ind = ind, cond = code)
         } else {
-            format!("{ind}end else if (\n{cond}\n{ind}) do", ind = ind, cond = code)
+            format!(
+                "{ind}end else if (\n{cond}\n{ind}) do",
+                ind = ind,
+                cond = code
+            )
         };
 
         if context.str_within_max_width(&code) {
@@ -583,7 +593,12 @@ struct CondExprAndCode {
 }
 
 impl CondExprAndCode {
-    fn new(cond: Expr, cond_code: String, expr: Expr, expr_code: String) -> Self {
+    fn new(
+        cond: Expr,
+        cond_code: String,
+        expr: Expr,
+        expr_code: String,
+    ) -> Self {
         Self {
             cond,
             cond_code,
@@ -647,8 +662,11 @@ impl TryCatch {
 
         let new_code = match &self.exception_name {
             Some(exception_name) => {
-                format!("{} catch ({}) {}", try_expr, exception_name, catch_expr)
-            },
+                format!(
+                    "{} catch ({}) {}",
+                    try_expr, exception_name, catch_expr
+                )
+            }
             None => {
                 format!("{} catch {}", try_expr, catch_expr)
             }
@@ -1657,7 +1675,8 @@ end";
 
     #[test]
     fn try_catch_one_line_exception_works() {
-        let tc = TryCatch::new(ex_lit_num(0), Some("ex".to_owned()), ex_lit_num(1));
+        let tc =
+            TryCatch::new(ex_lit_num(0), Some("ex".to_owned()), ex_lit_num(1));
         let code = tc.rewrite(c()).unwrap();
         assert_eq!(code, "try 0 catch (ex) 1");
     }
@@ -1671,9 +1690,13 @@ end";
 
     #[test]
     fn try_catch_multi_line_exception_works() {
-        let tc = TryCatch::new(ex_id("name"), Some("ex".to_owned()), ex_id("name2"));
+        let tc =
+            TryCatch::new(ex_id("name"), Some("ex".to_owned()), ex_id("name2"));
         let code = tc.rewrite(nc(1, 18)).unwrap();
-        assert_eq!(code, " try do\n     name\n end catch (ex) do\n     name2\n end");
+        assert_eq!(
+            code,
+            " try do\n     name\n end catch (ex) do\n     name2\n end"
+        );
     }
 
     #[test]
@@ -1685,7 +1708,8 @@ end";
 
     #[test]
     fn if_one_line_else_works() {
-        let iff = If::new(ex_id("someBool"), ex_lit_num(0), Some(ex_lit_num(1)));
+        let iff =
+            If::new(ex_id("someBool"), ex_lit_num(0), Some(ex_lit_num(1)));
         let code = iff.rewrite(c()).unwrap();
         assert_eq!(code, "if (someBool) 0 else 1");
     }
@@ -1705,7 +1729,11 @@ end";
 
     #[test]
     fn if_multi_line_else_works() {
-        let iff = If::new(ex_id("someBool"), ex_lit_num(1000000000000), Some(ex_lit_num(0)));
+        let iff = If::new(
+            ex_id("someBool"),
+            ex_lit_num(1000000000000),
+            Some(ex_lit_num(0)),
+        );
         let code = iff.rewrite(nc(4, 21)).unwrap();
         let expected = "    if (someBool) do
         1000000000000
@@ -1720,7 +1748,8 @@ end";
 
     #[test]
     fn if_multi_line_cond_no_else_works() {
-        let iff = If::new(ex_id("someLongBool"), ex_lit_num(1000000000000), None);
+        let iff =
+            If::new(ex_id("someLongBool"), ex_lit_num(1000000000000), None);
         let code = iff.rewrite(nc(4, 21)).unwrap();
         let expected = "    if (
         someLongBool
@@ -1735,7 +1764,11 @@ end";
 
     #[test]
     fn if_multi_line_cond_else_works() {
-        let iff = If::new(ex_id("someLongBool"), ex_lit_num(1000000000000), Some(ex_lit_num(0)));
+        let iff = If::new(
+            ex_id("someLongBool"),
+            ex_lit_num(1000000000000),
+            Some(ex_lit_num(0)),
+        );
         let code = iff.rewrite(nc(4, 21)).unwrap();
         let expected = "    if (
         someLongBool
@@ -1752,8 +1785,16 @@ end";
 
     #[test]
     fn if_nested_no_else_works() {
-        let iff2 = Expr::If(Box::new(If::new(ex_id("reallyLong"), ex_lit_num(2), None)));
-        let iff1 = Expr::If(Box::new(If::new(ex_id("longer"), ex_lit_num(1), Some(iff2))));
+        let iff2 = Expr::If(Box::new(If::new(
+            ex_id("reallyLong"),
+            ex_lit_num(2),
+            None,
+        )));
+        let iff1 = Expr::If(Box::new(If::new(
+            ex_id("longer"),
+            ex_lit_num(1),
+            Some(iff2),
+        )));
         let iff0 = If::new(ex_id("short"), ex_lit_num(0), Some(iff1));
         let code = iff0.rewrite(nc(4, 31)).unwrap();
         let expected = "    if (short) do
@@ -1768,8 +1809,16 @@ end";
 
     #[test]
     fn if_nested_no_else_works_restricted_width() {
-        let iff2 = Expr::If(Box::new(If::new(ex_id("reallyLong"), ex_lit_num(2), None)));
-        let iff1 = Expr::If(Box::new(If::new(ex_id("longer"), ex_lit_num(1), Some(iff2))));
+        let iff2 = Expr::If(Box::new(If::new(
+            ex_id("reallyLong"),
+            ex_lit_num(2),
+            None,
+        )));
+        let iff1 = Expr::If(Box::new(If::new(
+            ex_id("longer"),
+            ex_lit_num(1),
+            Some(iff2),
+        )));
         let iff0 = If::new(ex_id("short"), ex_lit_num(0), Some(iff1));
         let code = iff0.rewrite(nc(4, 30)).unwrap(); // Note the reduced width
         let expected = "    if (short) do
