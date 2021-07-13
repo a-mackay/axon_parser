@@ -1,10 +1,13 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Id, List,
-    Lit, Neg, Not, Range, Return, Throw, TrapCall,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Func, Id,
+    List, Lit, Neg, Not, Range, Return, Throw, TrapCall,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
+/// An arbitrary big maximum width, supposed to be bigger than the width
+/// of any sane line of code.
+const MAX_WIDTH: usize = 1000;
 
 #[derive(Clone, Copy, Debug)]
 struct Context {
@@ -343,7 +346,7 @@ impl Rewrite for Expr {
             Self::Def(x) => x.rewrite(context),
             Self::Dict(x) => x.rewrite(context),
             // Self::DotCall(_) => false,
-            // Self::Func(_) => true,
+            Self::Func(x) => x.rewrite(context),
             Self::Id(x) => x.rewrite(context),
             // Self::If(_) => true,
             Self::List(x) => x.rewrite(context),
@@ -358,6 +361,50 @@ impl Rewrite for Expr {
             // Self::TryCatch(_) => true,
             _ => todo!(),
         }
+    }
+}
+
+impl Rewrite for Func {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let func = self.clone();
+        let func = func.blockify();
+
+        let param_context = Context::new(0, MAX_WIDTH);
+        let mut params = vec![];
+        for param in &func.params {
+            let name = param.name.to_string();
+            let default: Option<String> = param.default.as_ref().and_then(|default| {
+                let code = default.rewrite(param_context).expect("rewriting a default param did not return a string when using MAX_WIDTH");
+                // We hope the param fits on a single line of code
+                // because we told it to rewrite itself within MAX_WIDTH
+                // which is very wide.
+                if is_one_line(&code) {
+                    Some(code)
+                } else {
+                    panic!("a rewritten default param using MAX_WIDTH was not a single line")
+                }
+            });
+
+            let param_code = match default {
+                Some(default) => {
+                    format!("{name}: {default}", name = name, default = default)
+                }
+                None => name,
+            };
+            params.push(param_code);
+        }
+
+        let params_str = params.join(", ");
+        // Because of the call to blockify above, we know the body is a Block.
+        let prefix = format!("({}) => ", params_str);
+        let body = func.body.rewrite(context)?;
+        let new_code = add_after_leading_indent(&prefix, &body);
+
+        // We deliberately do not check new_code fits within the given
+        // width because we know the body already does, and I want the
+        // function parameters to all be on a single line regardless of
+        // desired width.
+        Some(new_code)
     }
 }
 
@@ -847,7 +894,7 @@ mod tests {
     use super::*;
     use crate::ast::{
         Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, List,
-        Lit, LitInner, Mul, Neg, Not, Return, Sub, Throw, TrapCall,
+        Lit, LitInner, Mul, Neg, Not, Param, Return, Sub, Throw, TrapCall,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -1262,5 +1309,44 @@ mod tests {
     0
 end";
         assert_eq!(code, expected);
+    }
+
+    #[test]
+    fn func_with_no_params_works() {
+        let func = Func::new(vec![], ex_lit_num(0));
+        let code = func.rewrite(c()).unwrap();
+        assert_eq!(code, "() => do\n    0\nend");
+    }
+
+    #[test]
+    fn func_with_one_param_works() {
+        let params = vec![
+            Param::new(tn("second"), Some(ex_lit_num(1))),
+        ];
+        let func = Func::new(params, ex_lit_num(0));
+        let code = func.rewrite(c()).unwrap();
+        assert_eq!(code, "(second: 1) => do\n    0\nend");
+    }
+
+    #[test]
+    fn func_with_params_works() {
+        let params = vec![
+            Param::new(tn("first"), None),
+            Param::new(tn("second"), Some(ex_lit_num(1))),
+        ];
+        let func = Func::new(params, ex_lit_num(0));
+        let code = func.rewrite(c()).unwrap();
+        assert_eq!(code, "(first, second: 1) => do\n    0\nend");
+    }
+
+    #[test]
+    fn func_with_params_exceeding_desired_width_works() {
+        let params = vec![
+            Param::new(tn("first"), None),
+            Param::new(tn("second"), Some(ex_lit_num(1))),
+        ];
+        let func = Func::new(params, ex_lit_num(0));
+        let code = func.rewrite(nc(1, 6)).unwrap();
+        assert_eq!(code, " (first, second: 1) => do\n     0\n end");
     }
 }
