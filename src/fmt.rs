@@ -1,5 +1,5 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Func, Id, If,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, FlatIf, Func, Id, If,
     List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
 };
 
@@ -366,23 +366,37 @@ impl Rewrite for Expr {
 
 impl Rewrite for If {
     fn rewrite(&self, context: Context) -> Option<String> {
-        let one_line = self.rewrite_one_line(context);
-        if one_line.is_some() {
-            one_line
-        } else {
-            self.default_rewrite(context)
-        }
+        self.flatten().rewrite(context)
     }
 }
 
-impl If {
+impl Rewrite for FlatIf {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        if self.has_single_condition() {
+            let one_line = self.rewrite_one_line(context);
+            if one_line.is_some() {
+                return one_line;
+            }
+        }
+
+        self.default_rewrite(context)
+    }
+}
+
+impl FlatIf {
+    fn has_single_condition(&self) -> bool {
+        self.cond_exprs.len() == 1
+    }
+
     fn rewrite_one_line(&self, context: Context) -> Option<String> {
-        let cond = self.cond.rewrite(context)?;
+        // We know we have exactly one conditional expr:
+        let cond_expr = self.cond_exprs.clone().remove(0);
+        let cond = cond_expr.cond.rewrite(context)?;
         let is_cond_one = is_one_line(&cond);
-        let mut if_expr = self.if_expr.rewrite(context)?;
+        let mut if_expr = cond_expr.expr.clone().rewrite(context)?;
         let is_if_one = is_one_line(&if_expr);
 
-        if If::one_line_expr_needs_parens(&self.if_expr) {
+        if FlatIf::one_line_expr_needs_parens(&cond_expr.expr) {
             if_expr = add_parens(&if_expr);
         }
 
@@ -391,7 +405,7 @@ impl If {
                 let mut else_expr_str = else_expr.rewrite(context)?;
                 let is_else_one = is_one_line(&else_expr_str);
 
-                if If::one_line_expr_needs_parens(else_expr) {
+                if FlatIf::one_line_expr_needs_parens(else_expr) {
                     else_expr_str = add_parens(&else_expr_str);
                 }
 
@@ -472,12 +486,11 @@ impl If {
     }
 
     fn default_rewrite(&self, context: Context) -> Option<String> {
-        let flat_if = self.flatten();
         let mut conds = vec![];
-        for (index, cond_expr) in flat_if.cond_exprs.iter().enumerate() {
+        for (index, cond_expr) in self.cond_exprs.iter().enumerate() {
             let is_first_cond = index == 0;
             let cond = cond_expr.cond.clone();
-            let cond_code = If::default_rewrite_cond(&cond_expr.cond, context, is_first_cond)?;
+            let cond_code = FlatIf::default_rewrite_cond(&cond_expr.cond, context, is_first_cond)?;
             let expr = cond_expr.expr.clone().blockify();
             let expr_code = expr.rewrite(context)?;
             conds.push(CondExprAndCode::new(cond, cond_code, expr, expr_code));
@@ -486,19 +499,23 @@ impl If {
         let mut strs = vec![];
         for cond in conds.into_iter() {
             strs.push(cond.cond_code);
-            strs.push(cond.expr_code.trim_start().to_owned());
+            strs.push(strip_do_end_from_block(&cond.expr_code));
         }
+
+        let ind = context.indent();
 
         let new_code = match &self.else_expr {
             Some(else_expr) => {
-                strs.push(format!(" else "));
+                strs.push(format!("{ind}end else do", ind = ind));
                 let else_expr = else_expr.clone().blockify();
                 let else_expr_code = else_expr.rewrite(context)?;
-                strs.push(else_expr_code.trim_start().to_owned());
-                strs.join("")
+                strs.push(strip_do_end_from_block(&else_expr_code));
+                strs.push(format!("{ind}end", ind = ind));
+                strs.join("\n")
             },
             None => {
-                strs.join("")
+                strs.push(format!("{ind}end", ind = ind));
+                strs.join("\n")
             }
         };
 
@@ -524,10 +541,9 @@ impl If {
                     "end else if "
                 };
                 let code = add_after_leading_indent(prefix, &code);
-                let code = format!("{} ", code);
+                let code = format!("{} do", code);
 
-                let length_check_line = format!("{}do", code);
-                if context.str_within_max_width(&length_check_line) {
+                if context.str_within_max_width(&code) {
                     return Some(code);
                 }
             }
@@ -537,19 +553,28 @@ impl If {
         let code = cond.rewrite(multi_line_context)?;
         let ind = context.indent();
         let code = if is_first_cond {
-            format!("{ind}if (\n{cond}\n{ind}) ", ind = ind, cond = code)
+            format!("{ind}if (\n{cond}\n{ind}) do", ind = ind, cond = code)
         } else {
-            format!("{ind} else if (\n{cond}\n{ind}) ", ind = ind, cond = code)
+            format!("{ind}end else if (\n{cond}\n{ind}) do", ind = ind, cond = code)
         };
 
-        let length_check_line = format!("{}do", code);
-        if context.str_within_max_width(&length_check_line) {
+        if context.str_within_max_width(&code) {
             Some(code)
         } else {
             None
         }
     }
 }
+
+fn strip_do_end_from_block(block_code: &str) -> String {
+    let mut lines = block_code.lines().collect::<Vec<_>>();
+    lines.remove(0);
+    let last_index = lines.len() - 1;
+    lines.remove(last_index);
+    lines.join("\n")
+}
+
+#[derive(Debug)]
 struct CondExprAndCode {
     cond: Expr,
     cond_code: String,
