@@ -1,5 +1,5 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Func, Id,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, Func, Id, If,
     List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
 };
 
@@ -13,7 +13,7 @@ const MAX_WIDTH: usize = 1000;
 struct Context {
     /// The number of spaces across this code should be.
     indent: usize,
-    /// The maximum width allowed for this code.
+    /// The maximum width allowed for this code (max number of characters allowed per line).
     max_width: usize,
 }
 
@@ -348,7 +348,7 @@ impl Rewrite for Expr {
             // Self::DotCall(_) => false,
             Self::Func(x) => x.rewrite(context),
             Self::Id(x) => x.rewrite(context),
-            // Self::If(_) => true,
+            Self::If(x) => x.rewrite(context),
             Self::List(x) => x.rewrite(context),
             Self::Lit(x) => x.rewrite(context),
             Self::Neg(x) => x.rewrite(context),
@@ -360,6 +360,210 @@ impl Rewrite for Expr {
             Self::TrapCall(x) => x.rewrite(context),
             Self::TryCatch(x) => x.rewrite(context),
             _ => todo!(),
+        }
+    }
+}
+
+impl Rewrite for If {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let one_line = self.rewrite_one_line(context);
+        if one_line.is_some() {
+            one_line
+        } else {
+            self.default_rewrite(context)
+        }
+    }
+}
+
+impl If {
+    fn rewrite_one_line(&self, context: Context) -> Option<String> {
+        let cond = self.cond.rewrite(context)?;
+        let is_cond_one = is_one_line(&cond);
+        let mut if_expr = self.if_expr.rewrite(context)?;
+        let is_if_one = is_one_line(&if_expr);
+
+        if If::one_line_expr_needs_parens(&self.if_expr) {
+            if_expr = add_parens(&if_expr);
+        }
+
+        match &self.else_expr {
+            Some(else_expr) => {
+                let mut else_expr_str = else_expr.rewrite(context)?;
+                let is_else_one = is_one_line(&else_expr_str);
+
+                if If::one_line_expr_needs_parens(else_expr) {
+                    else_expr_str = add_parens(&else_expr_str);
+                }
+
+                match (is_if_one, is_cond_one, is_else_one) {
+                    (true, true, true) => {
+                        let cond = add_after_leading_indent("if (", &cond);
+                        let cond = format!("{})", cond);
+                        let if_expr = if_expr.trim();
+                        let else_expr_str = else_expr_str.trim();
+                        let code = format!("{} {} else {}", cond, if_expr, else_expr_str);
+
+                        if context.str_within_max_width(&code) {
+                            Some(code)
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None
+                }
+            },
+            None => {
+                match (is_if_one, is_cond_one) {
+                    (true, true) => {
+                        let cond = add_after_leading_indent("if (", &cond);
+                        let cond = format!("{})", cond);
+                        let if_expr = if_expr.trim();
+                        let code = format!("{} {}", cond, if_expr);
+
+                        if context.str_within_max_width(&code) {
+                            Some(code)
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None
+                }
+            }
+        }
+    }
+
+    /// Given an expression which will be written on one line, return
+    /// true if it needs to be surrounded by parentheses.
+    fn one_line_expr_needs_parens(expr: &Expr) -> bool {
+        match expr {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => true,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => false,
+            Expr::DotCall(_) => true,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => false,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => false,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => true,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => false,
+            Expr::TryCatch(_) => true,
+        }
+    }
+
+    fn default_rewrite(&self, context: Context) -> Option<String> {
+        let flat_if = self.flatten();
+        let mut conds = vec![];
+        for (index, cond_expr) in flat_if.cond_exprs.iter().enumerate() {
+            let is_first_cond = index == 0;
+            let cond = cond_expr.cond.clone();
+            let cond_code = If::default_rewrite_cond(&cond_expr.cond, context, is_first_cond)?;
+            let expr = cond_expr.expr.clone().blockify();
+            let expr_code = expr.rewrite(context)?;
+            conds.push(CondExprAndCode::new(cond, cond_code, expr, expr_code));
+        }
+
+        let mut strs = vec![];
+        for cond in conds.into_iter() {
+            strs.push(cond.cond_code);
+            strs.push(cond.expr_code.trim_start().to_owned());
+        }
+
+        let new_code = match &self.else_expr {
+            Some(else_expr) => {
+                strs.push(format!(" else "));
+                let else_expr = else_expr.clone().blockify();
+                let else_expr_code = else_expr.rewrite(context)?;
+                strs.push(else_expr_code.trim_start().to_owned());
+                strs.join("")
+            },
+            None => {
+                strs.join("")
+            }
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+
+    // We assume each cond's related expression is a Block.
+    fn default_rewrite_cond(cond: &Expr, context: Context, is_first_cond: bool) -> Option<String> {
+        let multi_line_context = context.increase_indent();
+
+        // Try put the condition on one line first:
+        let code = cond.rewrite(context);
+        if let Some(code) = code {
+            if is_one_line(&code) {
+                let code = add_parens(&code);
+                let prefix = if is_first_cond {
+                    "if "
+                } else {
+                    "end else if "
+                };
+                let code = add_after_leading_indent(prefix, &code);
+                let code = format!("{} ", code);
+
+                let length_check_line = format!("{}do", code);
+                if context.str_within_max_width(&length_check_line) {
+                    return Some(code);
+                }
+            }
+        }
+
+        // Try put the condition by itself on a new line:
+        let code = cond.rewrite(multi_line_context)?;
+        let ind = context.indent();
+        let code = if is_first_cond {
+            format!("{ind}if (\n{cond}\n{ind}) ", ind = ind, cond = code)
+        } else {
+            format!("{ind} else if (\n{cond}\n{ind}) ", ind = ind, cond = code)
+        };
+
+        let length_check_line = format!("{}do", code);
+        if context.str_within_max_width(&length_check_line) {
+            Some(code)
+        } else {
+            None
+        }
+    }
+}
+struct CondExprAndCode {
+    cond: Expr,
+    cond_code: String,
+    expr: Expr,
+    expr_code: String,
+}
+
+impl CondExprAndCode {
+    fn new(cond: Expr, cond_code: String, expr: Expr, expr_code: String) -> Self {
+        Self {
+            cond,
+            cond_code,
+            expr,
+            expr_code,
         }
     }
 }
@@ -559,6 +763,7 @@ impl Rewrite for Block {
 
         let new_code =
             format!("{ind}do\n{exprs}{ind}end", ind = ind, exprs = exprs_str);
+
         if context.str_within_max_width(&new_code) {
             Some(new_code)
         } else {
@@ -962,7 +1167,7 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, List,
+        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, If, List,
         Lit, LitInner, Mul, Neg, Not, Param, Return, Sub, Throw, TrapCall,
         TryCatch,
     };
@@ -1444,5 +1649,98 @@ end";
         let tc = TryCatch::new(ex_id("name"), Some("ex".to_owned()), ex_id("name2"));
         let code = tc.rewrite(nc(1, 18)).unwrap();
         assert_eq!(code, " try do\n     name\n end catch (ex) do\n     name2\n end");
+    }
+
+    #[test]
+    fn if_one_line_no_else_works() {
+        let iff = If::new(ex_id("someBool"), ex_lit_num(0), None);
+        let code = iff.rewrite(c()).unwrap();
+        assert_eq!(code, "if (someBool) 0");
+    }
+
+    #[test]
+    fn if_one_line_else_works() {
+        let iff = If::new(ex_id("someBool"), ex_lit_num(0), Some(ex_lit_num(1)));
+        let code = iff.rewrite(c()).unwrap();
+        assert_eq!(code, "if (someBool) 0 else 1");
+    }
+
+    #[test]
+    fn if_multi_line_no_else_works() {
+        let iff = If::new(ex_id("someBool"), ex_lit_num(1000000000000), None);
+        let code = iff.rewrite(nc(4, 21)).unwrap();
+        let expected = "    if (someBool) do
+        1000000000000
+    end";
+        assert_eq!(code, expected);
+
+        // Also check it fails if there's not enough room:
+        assert!(iff.rewrite(nc(4, 20)).is_none());
+    }
+
+    #[test]
+    fn if_multi_line_else_works() {
+        let iff = If::new(ex_id("someBool"), ex_lit_num(1000000000000), Some(ex_lit_num(0)));
+        let code = iff.rewrite(nc(4, 21)).unwrap();
+        let expected = "    if (someBool) do
+        1000000000000
+    end else do
+        0
+    end";
+        assert_eq!(code, expected);
+
+        // Also check it fails if there's not enough room:
+        assert!(iff.rewrite(nc(4, 20)).is_none());
+    }
+
+    #[test]
+    fn if_multi_line_cond_no_else_works() {
+        let iff = If::new(ex_id("someLongBool"), ex_lit_num(1000000000000), None);
+        let code = iff.rewrite(nc(4, 21)).unwrap();
+        let expected = "    if (
+        someLongBool
+    ) do
+        1000000000000
+    end";
+        assert_eq!(code, expected);
+
+        // Also check it fails if there's not enough room:
+        assert!(iff.rewrite(nc(4, 20)).is_none());
+    }
+
+    #[test]
+    fn if_multi_line_cond_else_works() {
+        let iff = If::new(ex_id("someLongBool"), ex_lit_num(1000000000000), Some(ex_lit_num(0)));
+        let code = iff.rewrite(nc(4, 21)).unwrap();
+        let expected = "    if (
+        someLongBool
+    ) do
+        1000000000000
+    end else do
+        0
+    end";
+        assert_eq!(code, expected);
+
+        // Also check it fails if there's not enough room:
+        assert!(iff.rewrite(nc(4, 20)).is_none());
+    }
+
+    #[test]
+    fn if_nested_no_else_works() {
+        let iff2 = Expr::If(Box::new(If::new(ex_id("reallyLong"), ex_lit_num(2), None)));
+        let iff1 = Expr::If(Box::new(If::new(ex_id("longer"), ex_lit_num(1), Some(iff2))));
+        let iff0 = If::new(ex_id("short"), ex_lit_num(0), Some(iff1));
+        let code = iff0.rewrite(nc(4, 35)).unwrap();
+        let expected = "    if (short) do
+        0
+    end else if (longer) do
+        1
+    end else if (reallyLong) do
+        2
+    end";
+        assert_eq!(code, expected);
+
+        // Also check it fails if there's not enough room:
+        assert!(iff0.rewrite(nc(4, 30)).is_none());
     }
 }
