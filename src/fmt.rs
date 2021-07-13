@@ -1,6 +1,6 @@
 use crate::ast::{
     Assign, Associativity, BinOp, Def, Dict, DictVal, Expr, Id, List, Lit, Neg,
-    Not, Range, Return, Throw,
+    Not, Range, Return, Throw, TrapCall,
 };
 
 /// The size of a single block of indentation, the number of spaces (' ').
@@ -354,9 +354,62 @@ impl Rewrite for Expr {
             Self::Range(x) => x.rewrite(context),
             Self::Return(x) => x.rewrite(context),
             Self::Throw(x) => x.rewrite(context),
-            // Self::TrapCall(_) => true,
+            Self::TrapCall(x) => x.rewrite(context),
             // Self::TryCatch(_) => true,
             _ => todo!(),
+        }
+    }
+}
+
+// todo consider trailing lambda func calls and how they affect
+// requiring parentheses. Eg abc(() => 1)->xyz works, abc() () => 1->xyz wont.
+
+impl Rewrite for TrapCall {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let needs_parens = match &self.target {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => false,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => false,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => true,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => true,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => false,
+            Expr::TryCatch(_) => true,
+        };
+        let mut target = self.target.rewrite(context)?;
+        if needs_parens {
+            target = add_parens(&target);
+        }
+        let key = self.key.to_string();
+        let new_code = format!("{target}->{key}", target = target, key = key);
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
         }
     }
 }
@@ -704,7 +757,7 @@ mod tests {
     use super::*;
     use crate::ast::{
         Add, And, Assign, BinOp, BinOpId, Def, Dict, Expr, Id, List, Lit,
-        LitInner, Mul, Neg, Not, Return, Sub, Throw,
+        LitInner, Mul, Neg, Not, Return, Sub, Throw, TrapCall,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -1070,5 +1123,24 @@ mod tests {
             ("def", DictVal::RemoveMarker),
         ]);
         assert!(dict.rewrite(nc(1, 24)).is_none());
+    }
+
+    #[test]
+    fn trap_call_one_line_works() {
+        let trap_call = TrapCall::new(ex_id("target"), "trapped".to_owned());
+        let code = trap_call.rewrite(c()).unwrap();
+        assert_eq!(code, "target->trapped");
+    }
+
+    #[test]
+    fn trap_call_multi_line_works() {
+        let dict = Expr::Dict(dict(vec![
+            ("xyz", DictVal::Expr(ex_lit_num(10))),
+            ("abc", DictVal::Marker),
+            ("def", DictVal::RemoveMarker),
+        ]));
+        let trap_call = TrapCall::new(dict, "trapped".to_owned());
+        let code = trap_call.rewrite(nc(1, 25)).unwrap();
+        assert_eq!(code, " {\n     abc: marker(),\n     def: removeMarker(),\n     xyz: 10,\n }->trapped");
     }
 }
