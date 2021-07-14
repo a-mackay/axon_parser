@@ -2448,19 +2448,19 @@ end";
     }
 
     fn lambda_zero() -> Expr {
-        let body = ex_lit_num(0);
+        let body = ex_lit_num(100);
         Expr::Func(Box::new(Func::new(vec![], body)))
     }
 
     fn lambda_one() -> Expr {
-        let body = ex_lit_num(0);
+        let body = ex_lit_num(100);
         let param = Param::new(tn("a"), None);
         let args = vec![param];
         Expr::Func(Box::new(Func::new(args, body)))
     }
 
     fn lambda_two() -> Expr {
-        let body = ex_lit_num(0);
+        let body = ex_lit_num(100);
         let param_a = Param::new(tn("a"), None);
         let param_b = Param::new(tn("b"), None);
         let args = vec![param_a, param_b];
@@ -2475,10 +2475,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc() () => 0");
+        assert_eq!(code, "value.someFunc() () => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(() => 0)");
+        assert_eq!(code, "value.someFunc(() => 100)");
     }
 
     #[test]
@@ -2489,10 +2489,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc() a => 0");
+        assert_eq!(code, "value.someFunc() a => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(a => 0)");
+        assert_eq!(code, "value.someFunc(a => 100)");
     }
 
     #[test]
@@ -2503,10 +2503,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc() (a, b) => 0");
+        assert_eq!(code, "value.someFunc() (a, b) => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc((a, b) => 0)");
+        assert_eq!(code, "value.someFunc((a, b) => 100)");
     }
 
     #[test]
@@ -2517,10 +2517,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1) () => 0");
+        assert_eq!(code, "value.someFunc(1) () => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, () => 0)");
+        assert_eq!(code, "value.someFunc(1, () => 100)");
     }
 
     #[test]
@@ -2531,10 +2531,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1) a => 0");
+        assert_eq!(code, "value.someFunc(1) a => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, a => 0)");
+        assert_eq!(code, "value.someFunc(1, a => 100)");
     }
 
     #[test]
@@ -2545,10 +2545,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1) (a, b) => 0");
+        assert_eq!(code, "value.someFunc(1) (a, b) => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, (a, b) => 0)");
+        assert_eq!(code, "value.someFunc(1, (a, b) => 100)");
     }
 
     #[test]
@@ -2559,10 +2559,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2) () => 0");
+        assert_eq!(code, "value.someFunc(1, 2) () => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2, () => 0)");
+        assert_eq!(code, "value.someFunc(1, 2, () => 100)");
     }
 
     #[test]
@@ -2573,10 +2573,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2) a => 0");
+        assert_eq!(code, "value.someFunc(1, 2) a => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2, a => 0)");
+        assert_eq!(code, "value.someFunc(1, 2, a => 100)");
     }
 
     #[test]
@@ -2587,10 +2587,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2) (a, b) => 0");
+        assert_eq!(code, "value.someFunc(1, 2) (a, b) => 100");
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2, (a, b) => 0)");
+        assert_eq!(code, "value.someFunc(1, 2, (a, b) => 100)");
     }
 
     // TODO test dot call multi-line trailing lambda
