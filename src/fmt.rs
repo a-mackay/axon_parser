@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, Expr, FlatIf,
-    Func, Id, If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall,
+    Assign, Associativity, BinOp, Block, Def, Dict, DictVal, DotCall, Expr,
+    FlatIf, Func, Id, If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall,
     TryCatch,
 };
 
@@ -346,7 +346,7 @@ impl Rewrite for Expr {
             // Self::Call(_) => false,
             Self::Def(x) => x.rewrite(context),
             Self::Dict(x) => x.rewrite(context),
-            // Self::DotCall(_) => false,
+            Self::DotCall(x) => x.rewrite(context),
             Self::Func(x) => x.rewrite(context),
             Self::Id(x) => x.rewrite(context),
             Self::If(x) => x.rewrite(context),
@@ -361,6 +361,136 @@ impl Rewrite for Expr {
             Self::TrapCall(x) => x.rewrite(context),
             Self::TryCatch(x) => x.rewrite(context),
             _ => todo!(),
+        }
+    }
+}
+
+impl Rewrite for DotCall {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        todo!()
+    }
+}
+
+impl DotCall {
+    fn target_needs_parens(&self) -> bool {
+        match self.target.as_ref() {
+            Expr::Add(_) => true,
+            Expr::And(_) => true,
+            Expr::Cmp(_) => true,
+            Expr::Div(_) => true,
+            Expr::Eq(_) => true,
+            Expr::Gt(_) => true,
+            Expr::Gte(_) => true,
+            Expr::Lt(_) => true,
+            Expr::Lte(_) => true,
+            Expr::Mul(_) => true,
+            Expr::Ne(_) => true,
+            Expr::Or(_) => true,
+            Expr::Sub(_) => true,
+            Expr::Assign(_) => true,
+            Expr::Block(_) => true,
+            Expr::Call(_) => false,
+            Expr::Def(_) => true,
+            Expr::Dict(_) => false,
+            Expr::DotCall(_) => false,
+            Expr::Func(_) => true,
+            Expr::Id(_) => false,
+            Expr::If(_) => true,
+            Expr::List(_) => false,
+            Expr::Lit(_) => false,
+            Expr::Neg(_) => true,
+            Expr::Not(_) => true,
+            Expr::PartialCall(_) => false,
+            Expr::Range(_) => true,
+            Expr::Return(_) => true,
+            Expr::Throw(_) => true,
+            Expr::TrapCall(_) => false,
+            Expr::TryCatch(_) => true,
+        }
+    }
+
+    /// Try rewrite this DotCall on a single line.
+    fn rewrite_one_line(
+        &self,
+        context: Context,
+        use_trailing_lambda: bool,
+    ) -> Option<String> {
+        let target_needs_parens = self.target_needs_parens();
+        let can_have_trailing_lambda = self.can_have_trailing_lambda();
+        let mut target = if can_have_trailing_lambda {
+            todo!("rewrite the target such that there is no trailing lambda")
+        } else {
+            self.target.rewrite(context)?
+        };
+        if target_needs_parens {
+            target = add_parens(&target);
+        }
+
+        if !is_one_line(&target) || !context.str_within_max_width(&target) {
+            return None;
+        }
+
+        if use_trailing_lambda && self.can_have_trailing_lambda() {
+            let mut regular_args = self.args.clone();
+            let last_index = regular_args.len() - 1;
+            let lambda_arg = regular_args.remove(last_index);
+            let regular_args_str =
+                DotCall::rewrite_args_one_line(&regular_args, context)?;
+            let lambda_str = lambda_arg.rewrite(context)?;
+            if !is_one_line(&lambda_str) {
+                return None;
+            } else {
+                let new_code = format!(
+                    "{target}.{name}({args}) {lambda}",
+                    target = target,
+                    name = self.func_name,
+                    args = regular_args_str,
+                    lambda = lambda_str
+                );
+
+                if context.str_within_max_width(&new_code) {
+                    Some(new_code)
+                } else {
+                    None
+                }
+            }
+        } else {
+            let args_str = DotCall::rewrite_args_one_line(&self.args, context)?;
+            let new_code = format!(
+                "{target}.{name}({args})",
+                target = target,
+                name = self.func_name,
+                args = args_str
+            );
+
+            if context.str_within_max_width(&new_code) {
+                Some(new_code)
+            } else {
+                None
+            }
+        }
+    }
+
+    fn rewrite_args_one_line(
+        args: &[Expr],
+        context: Context,
+    ) -> Option<String> {
+        let big_context = Context::new(0, MAX_WIDTH);
+        let args: Option<Vec<_>> =
+            args.iter().map(|arg| arg.rewrite(big_context)).collect();
+        let args = args?;
+        for arg in &args {
+            if !is_one_line(&arg) {
+                return None;
+            }
+        }
+        let args_str = args.join(", ");
+        let args_str =
+            format!("{ind}{args}", ind = context.indent(), args = args_str);
+        if context.str_within_max_width(&args_str) {
+            Some(args_str)
+        } else {
+            None
         }
     }
 }
@@ -709,13 +839,17 @@ impl Func {
                             // function on one line, so we return early.
                             None => return None,
                         }
-                    },
+                    }
                     None => None,
                 };
 
                 let param_code = match default {
                     Some(default) => {
-                        format!("{name}: {default}", name = name, default = default)
+                        format!(
+                            "{name}: {default}",
+                            name = name,
+                            default = default
+                        )
                     }
                     None => name,
                 };
@@ -1281,9 +1415,9 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, If, List,
-        Lit, LitInner, Mul, Neg, Not, Or, Param, Return, Sub, Throw, TrapCall,
-        TryCatch,
+        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, DotCall, Expr, Id,
+        If, List, Lit, LitInner, Mul, Neg, Not, Or, Param, Return, Sub, Throw,
+        TrapCall, TryCatch,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;

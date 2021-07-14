@@ -917,6 +917,15 @@ impl DotCall {
         }
     }
 
+    pub fn can_have_trailing_lambda(&self) -> bool {
+        if self.args.len() >= 1 {
+            let last_arg = self.args.last().unwrap();
+            matches!(last_arg, Expr::Func(_))
+        } else {
+            false
+        }
+    }
+
     pub fn to_line(&self, indent: &Indent) -> Line {
         let line = self.target.to_line(indent);
         let zero_indent = zero_indent();
@@ -1117,6 +1126,15 @@ impl PartialCall {
             id: Uuid::new_v4(),
             func_name,
             args,
+        }
+    }
+
+    pub fn can_have_trailing_lambda(&self) -> bool {
+        if self.args.len() >= 1 {
+            let last_arg = self.args.last().unwrap();
+            matches!(last_arg, PartialCallArgument::Expr(Expr::Func(_)))
+        } else {
+            false
         }
     }
 
@@ -1337,6 +1355,15 @@ impl Call {
             id: Uuid::new_v4(),
             target,
             args,
+        }
+    }
+
+    pub fn can_have_trailing_lambda(&self) -> bool {
+        if self.args.len() >= 1 {
+            let last_arg = self.args.last().unwrap();
+            matches!(last_arg, Expr::Func(_))
+        } else {
+            false
         }
     }
 
