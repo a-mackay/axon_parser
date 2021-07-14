@@ -682,6 +682,77 @@ impl TryCatch {
 
 impl Rewrite for Func {
     fn rewrite(&self, context: Context) -> Option<String> {
+        let one_line = self.rewrite_one_line(context);
+        if one_line.is_some() {
+            one_line
+        } else {
+            self.default_rewrite(context)
+        }
+    }
+}
+
+impl Func {
+    fn rewrite_one_line(&self, context: Context) -> Option<String> {
+        let body = self.body.rewrite(context)?;
+        let params = &self.params[..];
+        if is_one_line(&body) {
+            let mut param_strs = vec![];
+            for param in params {
+                let name = param.name.to_string();
+                let default: Option<String> = match &param.default {
+                    Some(expr) => {
+                        let default_code = expr.rewrite(context);
+                        match default_code {
+                            Some(default_code) => Some(default_code),
+                            // If we can't rewrite the default argument
+                            // on a single line, we cannot write the entire
+                            // function on one line, so we return early.
+                            None => return None,
+                        }
+                    },
+                    None => None,
+                };
+
+                let param_code = match default {
+                    Some(default) => {
+                        format!("{name}: {default}", name = name, default = default)
+                    }
+                    None => name,
+                };
+                param_strs.push(param_code);
+            }
+
+            let params_str = param_strs.join(", ");
+            let needs_parens = self.needs_parens_around_params();
+            let prefix = if needs_parens {
+                format!("({}) => ", params_str)
+            } else {
+                format!("{} => ", params_str)
+            };
+            let new_code = add_after_leading_indent(&prefix, &body);
+
+            if context.str_within_max_width(&new_code) {
+                Some(new_code)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn needs_parens_around_params(&self) -> bool {
+        if self.params.len() == 1 {
+            let only_param = self.params.first().unwrap();
+            // If this parameter has a default argument, we needs parentheses:
+            only_param.default.is_some()
+        } else {
+            // Either no params, or multiple params, so we need parentheses:
+            true
+        }
+    }
+
+    fn default_rewrite(&self, context: Context) -> Option<String> {
         let func = self.clone();
         let func = func.blockify();
 
@@ -1631,28 +1702,72 @@ end";
 
     #[test]
     fn func_with_no_params_works() {
-        let func = Func::new(vec![], ex_lit_num(0));
-        let code = func.rewrite(c()).unwrap();
-        assert_eq!(code, "() => do\n    0\nend");
+        let func = Func::new(vec![], ex_lit_num(100));
+        let code = func.rewrite(nc(0, 8)).unwrap();
+        assert_eq!(code, "() => do\n    100\nend");
+    }
+
+    #[test]
+    fn func_with_no_params_one_line_works() {
+        let func = Func::new(vec![], ex_lit_num(100));
+        let code = func.rewrite(nc(0, 9)).unwrap();
+        assert_eq!(code, "() => 100");
     }
 
     #[test]
     fn func_with_one_param_works() {
-        let params = vec![Param::new(tn("second"), Some(ex_lit_num(1)))];
-        let func = Func::new(params, ex_lit_num(0));
-        let code = func.rewrite(c()).unwrap();
-        assert_eq!(code, "(second: 1) => do\n    0\nend");
+        let params = vec![Param::new(tn("a"), Some(ex_lit_num(1)))];
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 12)).unwrap();
+        assert_eq!(code, "(a: 1) => do\n    100\nend");
+    }
+
+    #[test]
+    fn func_with_one_param_one_line_works() {
+        let params = vec![Param::new(tn("a"), Some(ex_lit_num(1)))];
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 13)).unwrap();
+        assert_eq!(code, "(a: 1) => 100");
+    }
+
+    #[test]
+    fn func_with_one_param_no_default_works() {
+        let params = vec![Param::new(tn("a"), None)];
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 7)).unwrap();
+        // If a function is rewritten over multiple lines, ensure it always
+        // surrounds parameters with parentheses.
+        assert_eq!(code, "(a) => do\n    100\nend");
+    }
+
+    #[test]
+    fn func_with_one_param_no_default_one_line_works() {
+        let params = vec![Param::new(tn("a"), None)];
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 8)).unwrap();
+        assert_eq!(code, "a => 100");
     }
 
     #[test]
     fn func_with_params_works() {
         let params = vec![
-            Param::new(tn("first"), None),
-            Param::new(tn("second"), Some(ex_lit_num(1))),
+            Param::new(tn("a"), None),
+            Param::new(tn("b"), Some(ex_lit_num(1))),
         ];
-        let func = Func::new(params, ex_lit_num(0));
-        let code = func.rewrite(c()).unwrap();
-        assert_eq!(code, "(first, second: 1) => do\n    0\nend");
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 15)).unwrap();
+        assert_eq!(code, "(a, b: 1) => do\n    100\nend");
+    }
+
+    #[test]
+    fn func_with_params_one_line_works() {
+        let params = vec![
+            Param::new(tn("a"), None),
+            Param::new(tn("b"), Some(ex_lit_num(1))),
+        ];
+        let func = Func::new(params, ex_lit_num(100));
+        let code = func.rewrite(nc(0, 16)).unwrap();
+        assert_eq!(code, "(a, b: 1) => 100");
     }
 
     #[test]
