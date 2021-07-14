@@ -409,31 +409,162 @@ impl DotCall {
         }
     }
 
+    fn rewrite_multi_line(&self, context: Context, use_trailing_lambda: bool) -> Option<String> {
+        let target_can_have_trailing_lambda = false;
+        let target = self.rewrite_target(context, target_can_have_trailing_lambda)?;
+        todo!()
+    }
+
+    fn rewrite_call_multi_line(
+        &self,
+        context: Context,
+        use_trailing_lambda: bool,
+    ) -> Option<String> {
+        let one_line_call = self.rewrite_call_one_line(context, use_trailing_lambda);
+        if one_line_call.is_some() {
+            return one_line_call;
+        } else {
+            todo!()
+        }
+    }
+
+    /// Rewrite the call part only (everything excluding the target).
+    fn rewrite_call_one_line(&self, context: Context, use_trailing_lambda: bool) -> Option<String> {
+        // try write "    .funcName(a, b) () => lambda"
+        //        or "    .funcName(a, b, () => lambda)"
+        // no lambda "    .funcName(a, b)"
+
+        if use_trailing_lambda && self.can_have_trailing_lambda() {
+            let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
+            let regular_args_str = DotCall::rewrite_args_one_line(&regular_args, context)?;
+            let lambda_arg_str = lambda_arg.rewrite(context)?;
+
+            if !is_one_line(&lambda_arg_str) {
+                return None;
+            } else {
+                let prefix = format!(".{name}(", name = self.func_name);
+                let new_code = add_after_leading_indent(&prefix, &regular_args_str);
+                let new_code = format!("{start}) {lambda}", start = new_code, lambda = lambda_arg_str);
+
+                if context.str_within_max_width(&new_code) {
+                    Some(new_code)
+                } else {
+                    None
+                }
+            }
+        } else {
+            let args_str = DotCall::rewrite_args_one_line(&self.args, context)?;
+            let prefix = format!(".{name}(", name = self.func_name);
+            let new_code = add_after_leading_indent(&prefix, &args_str);
+            let new_code = format!("{start})", start = new_code);
+
+            if context.str_within_max_width(&new_code) {
+                Some(new_code)
+            } else {
+                None
+            }
+        }
+    }
+
+    /// Rewrite the call part only (everything excluding the target).
+    fn rewrite_call_one_line_with_multi_line_lambda(&self, context: Context, use_trailing_lambda: bool) -> Option<String> {
+        // try write "    .funcName(a, b) () => do
+        //                    lambda
+        //                end"
+        //        or "    .funcName(a, b, () => do
+        //                    lambda
+        //                end)"
+        // no lambda "    .funcName(a, b)"
+
+        if use_trailing_lambda && self.can_have_trailing_lambda() {
+            let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
+            let regular_args_str = DotCall::rewrite_args_one_line(&regular_args, context)?;
+            let regular_args_str = regular_args_str.trim(); // Remove indent whitespace.
+            let lambda_arg_str = lambda_arg.rewrite(context)?;
+
+            let prefix = format!(".{name}({args})", name = self.func_name, args = regular_args_str);
+            let new_code = add_after_leading_indent(&prefix, &lambda_arg_str);
+
+            if context.str_within_max_width(&new_code) {
+                Some(new_code)
+            } else {
+                None
+            }
+        } else {
+            // There will be no trailing lambda:
+            self.rewrite_call_one_line(context, false)
+        }
+    }
+
+    /// Rewrite the call part only (everything excluding the target).
+    fn rewrite_call_multi_line_default(&self, context: Context, use_trailing_lambda: bool) -> Option<String> {
+        // try write "    .funcName(
+        //                    a,
+        //                    b,
+        //                    do
+        //                        longC
+        //                    end
+        //                ) () => do
+        //                    lambda
+        //                end"
+        //        or "    .funcName(
+        //                    a,
+        //                    b,
+        //                    do
+        //                        longC
+        //                    end,
+        //                    () => do
+        //                        lambda
+        //                    end
+        //                )"
+        todo!()
+    }
+
+    fn split_lambda(args: &[Expr]) -> (Vec<Expr>, Expr) {
+        let mut regular_args = args.iter().map(|arg| arg.clone()).collect::<Vec<_>>();
+        let last_index = regular_args.len() - 1;
+        let lambda_arg = regular_args.remove(last_index);
+        (regular_args, lambda_arg)
+    }
+
+    /// Rewrite the target.
+    fn rewrite_target(&self, context: Context, target_can_have_trailing_lambda: bool) -> Option<String> {
+        let target_needs_parens = self.target_needs_parens();
+        let mut target = if target_can_have_trailing_lambda {
+            // Rewrite the target in a way that allows trailing lambdas, if
+            // they are present.
+            self.target.rewrite(context)? // TODO check this logic
+        } else {
+            todo!("rewrite the target such that there is no trailing lambda")
+        };
+        if target_needs_parens {
+            target = add_parens(&target);
+        }
+
+        if context.str_within_max_width(&target) {
+            return Some(target);
+        } else {
+            None
+        }
+    }
+
     /// Try rewrite this DotCall on a single line.
     fn rewrite_one_line(
         &self,
         context: Context,
         use_trailing_lambda: bool,
     ) -> Option<String> {
-        let target_needs_parens = self.target_needs_parens();
-        let can_have_trailing_lambda = self.can_have_trailing_lambda();
-        let mut target = if can_have_trailing_lambda {
-            todo!("rewrite the target such that there is no trailing lambda")
-        } else {
-            self.target.rewrite(context)?
-        };
-        if target_needs_parens {
-            target = add_parens(&target);
-        }
+        let target_can_have_trailing_lambda = false;
+        let target = self.rewrite_target(context, target_can_have_trailing_lambda)?;
 
-        if !is_one_line(&target) || !context.str_within_max_width(&target) {
+        if !is_one_line(&target) {
             return None;
         }
 
         if use_trailing_lambda && self.can_have_trailing_lambda() {
-            let mut regular_args = self.args.clone();
-            let last_index = regular_args.len() - 1;
-            let lambda_arg = regular_args.remove(last_index);
+            // This DotCall has a function as its last argument, and
+            // is allowed to format it as a trailing lambda.
+            let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
             let regular_args_str =
                 DotCall::rewrite_args_one_line(&regular_args, context)?;
             let lambda_str = lambda_arg.rewrite(context)?;
@@ -455,6 +586,7 @@ impl DotCall {
                 }
             }
         } else {
+            // Format the arguments without any trailing lambdas.
             let args_str = DotCall::rewrite_args_one_line(&self.args, context)?;
             let new_code = format!(
                 "{target}.{name}({args})",
