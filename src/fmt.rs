@@ -1282,7 +1282,7 @@ mod tests {
     use super::*;
     use crate::ast::{
         Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, Expr, Id, If, List,
-        Lit, LitInner, Mul, Neg, Not, Param, Return, Sub, Throw, TrapCall,
+        Lit, LitInner, Mul, Neg, Not, Or, Param, Return, Sub, Throw, TrapCall,
         TryCatch,
     };
     use raystack_core::{Number, TagName};
@@ -1458,7 +1458,11 @@ mod tests {
 
     #[test]
     fn neg_multi_line_works() {
-        todo!()
+        let add = BinOp::new(ex_lit_num(1000), BinOpId::Add, ex_lit_num(2000));
+        let add = Expr::Add(Box::new(Add(add)));
+        let neg = Expr::Neg(Box::new(Neg::new(add)));
+        let code = neg.rewrite(nc(1, 8)).unwrap();
+        assert_eq!(code, " -(1000\n + 2000)");
     }
 
     #[test]
@@ -1485,7 +1489,11 @@ mod tests {
 
     #[test]
     fn not_multi_line_works() {
-        todo!()
+        let or = BinOp::new(ex_lit_bool(true), BinOpId::Or, ex_lit_bool(false));
+        let or = Expr::Or(Box::new(Or(or)));
+        let not = Expr::Not(Box::new(Not::new(or)));
+        let code = not.rewrite(nc(1, 10)).unwrap();
+        assert_eq!(code, " not (true\n or false)");
     }
 
     #[test]
@@ -1579,7 +1587,18 @@ mod tests {
 
     #[test]
     fn range_multi_line_works() {
-        todo!()
+        let start = Expr::Block(Block::new(vec![ex_lit_num(100)]));
+        let end = Expr::Block(Block::new(vec![ex_lit_num(200)]));
+        let range = Range::new(start, end);
+        let code = range.rewrite(nc(4, 11)).unwrap();
+        let expected = "    (do
+        100
+    end)
+    ..
+    (do
+        200
+    end)";
+        assert_eq!(code, expected)
     }
 
     #[test]
