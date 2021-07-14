@@ -727,35 +727,53 @@ impl DotCall {
             // This DotCall has a function as its last argument, and
             // is allowed to format it as a trailing lambda.
             let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
-            let regular_args_str =
-                DotCall::rewrite_args_one_line(&regular_args, context)?;
             let lambda_str = lambda_arg.rewrite(context)?;
             if !is_one_line(&lambda_str) {
                 return None;
+            }
+
+            let new_code = if regular_args.is_empty() {
+                format!(
+                    "{target}.{name}() {lambda}",
+                    target = target,
+                    name = self.func_name,
+                    lambda = lambda_str
+                )
             } else {
-                let new_code = format!(
+                let regular_args_str =
+                    DotCall::rewrite_args_one_line(&regular_args, context)?;
+                format!(
                     "{target}.{name}({args}) {lambda}",
                     target = target,
                     name = self.func_name,
                     args = regular_args_str,
                     lambda = lambda_str
-                );
+                )
+            };
 
-                if context.str_within_max_width(&new_code) {
-                    Some(new_code)
-                } else {
-                    None
-                }
+            if context.str_within_max_width(&new_code) {
+                Some(new_code)
+            } else {
+                None
             }
         } else {
             // Format the arguments without any trailing lambdas.
-            let args_str = DotCall::rewrite_args_one_line(&self.args, context)?;
-            let new_code = format!(
-                "{target}.{name}({args})",
-                target = target,
-                name = self.func_name,
-                args = args_str
-            );
+            let new_code = if self.args.is_empty() {
+                format!(
+                    "{target}.{name}()",
+                    target = target,
+                    name = self.func_name
+                )
+            } else {
+                let args_str =
+                    DotCall::rewrite_args_one_line(&self.args, context)?;
+                format!(
+                    "{target}.{name}({args})",
+                    target = target,
+                    name = self.func_name,
+                    args = args_str
+                )
+            };
 
             if context.str_within_max_width(&new_code) {
                 Some(new_code)
@@ -765,6 +783,7 @@ impl DotCall {
         }
     }
 
+    /// args must be non-empty
     fn rewrite_args_one_line(
         args: &[Expr],
         context: Context,
@@ -2406,5 +2425,171 @@ end";
         let dot_call = DotCall::new(name, target, args);
         let code = dot_call.rewrite(c()).unwrap();
         assert_eq!(code, "value.someFunc()")
+    }
+
+    #[test]
+    fn dot_call_one_line_one_arg_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1)];
+        let dot_call = DotCall::new(name, target, args);
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1)")
+    }
+
+    #[test]
+    fn dot_call_one_line_two_args_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2)];
+        let dot_call = DotCall::new(name, target, args);
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2)")
+    }
+
+    fn lambda_zero() -> Expr {
+        let body = ex_lit_num(0);
+        Expr::Func(Box::new(Func::new(vec![], body)))
+    }
+
+    fn lambda_one() -> Expr {
+        let body = ex_lit_num(0);
+        let param = Param::new(tn("a"), None);
+        let args = vec![param];
+        Expr::Func(Box::new(Func::new(args, body)))
+    }
+
+    fn lambda_two() -> Expr {
+        let body = ex_lit_num(0);
+        let param_a = Param::new(tn("a"), None);
+        let param_b = Param::new(tn("b"), None);
+        let args = vec![param_a, param_b];
+        Expr::Func(Box::new(Func::new(args, body)))
+    }
+
+    #[test]
+    fn dot_call_one_line_no_args_trailing_lambda_zero_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![lambda_zero()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc() () => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(() => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_no_args_trailing_lambda_one_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![lambda_one()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc() a => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(a => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_no_args_trailing_lambda_two_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![lambda_two()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc() (a, b) => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc((a, b) => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_one_arg_trailing_lambda_zero_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), lambda_zero()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1) () => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, () => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_one_arg_trailing_lambda_one_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), lambda_one()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1) a => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, a => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_one_arg_trailing_lambda_two_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), lambda_two()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1) (a, b) => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, (a, b) => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_two_args_trailing_lambda_zero_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_zero()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2) () => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2, () => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_two_args_trailing_lambda_one_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_one()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2) a => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2, a => 0)");
+    }
+
+    #[test]
+    fn dot_call_one_line_two_args_trailing_lambda_two_works() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_two()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2) (a, b) => 0");
+
+        let code = dot_call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value.someFunc(1, 2, (a, b) => 0)");
     }
 }
