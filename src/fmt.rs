@@ -2592,4 +2592,7 @@ end";
         let code = dot_call.rewrite_inner(c(), false).unwrap();
         assert_eq!(code, "value.someFunc(1, 2, (a, b) => 0)");
     }
+
+    // TODO test dot call multi-line trailing lambda
+    // TODO test dot call multi-line
 }
