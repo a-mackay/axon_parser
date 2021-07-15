@@ -906,9 +906,7 @@ impl DotCall {
         let build = build.add(cdc);
 
         match self.target.as_ref() {
-            Expr::DotCall(dot_call) => {
-                dot_call.to_chain_inner(build)
-            },
+            Expr::DotCall(dot_call) => dot_call.to_chain_inner(build),
             _ => {
                 let initial_target = self.target.as_ref().clone();
                 build.set_target(initial_target)
@@ -924,7 +922,7 @@ impl DotCall {
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
-        if self.args.len() >= 1 {
+        if !self.args.is_empty() {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, Expr::Func(_))
         } else {
@@ -1125,7 +1123,7 @@ impl PartialCall {
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
-        if self.args.len() >= 1 {
+        if !self.args.is_empty() {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, PartialCallArgument::Expr(Expr::Func(_)))
         } else {
@@ -1343,7 +1341,7 @@ impl Call {
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
-        if self.args.len() >= 1 {
+        if !self.args.is_empty() {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, Expr::Func(_))
         } else {
@@ -2185,22 +2183,22 @@ impl Expr {
 
     /// Returns true if this expression is a binary operation.
     pub fn is_bin_op(&self) -> bool {
-        match self {
-            Self::Add(_) => true,
-            Self::And(_) => true,
-            Self::Cmp(_) => true,
-            Self::Div(_) => true,
-            Self::Eq(_) => true,
-            Self::Gt(_) => true,
-            Self::Gte(_) => true,
-            Self::Lt(_) => true,
-            Self::Lte(_) => true,
-            Self::Mul(_) => true,
-            Self::Ne(_) => true,
-            Self::Or(_) => true,
-            Self::Sub(_) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::Add(_)
+                | Self::And(_)
+                | Self::Cmp(_)
+                | Self::Div(_)
+                | Self::Eq(_)
+                | Self::Gt(_)
+                | Self::Gte(_)
+                | Self::Lt(_)
+                | Self::Lte(_)
+                | Self::Mul(_)
+                | Self::Ne(_)
+                | Self::Or(_)
+                | Self::Sub(_)
+        )
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {

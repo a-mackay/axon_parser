@@ -399,7 +399,7 @@ impl Call {
     ) -> Option<String> {
         let one_line = self.rewrite_one_line(context, use_trailing_lambda);
         if one_line.is_some() {
-            return one_line;
+            one_line
         } else {
             self.rewrite_multi_line(context, use_trailing_lambda)
         }
@@ -759,7 +759,7 @@ impl DotCall {
     ) -> Option<String> {
         let one_line = self.rewrite_one_line(context, use_trailing_lambda);
         if one_line.is_some() {
-            return one_line;
+            one_line
         } else {
             self.rewrite_multi_line(context, use_trailing_lambda)
         }
@@ -1094,7 +1094,7 @@ impl DotCall {
         }
 
         if context.str_within_max_width(&target) {
-            return Some(target);
+            Some(target)
         } else {
             None
         }
@@ -1158,8 +1158,7 @@ impl Call {
                 }
                 _ => {
                     args.push(last_arg);
-                    let all_args =
-                        args.into_iter().map(|a| Arg::Expr(a)).collect();
+                    let all_args = args.into_iter().map(Arg::Expr).collect();
                     CallArgType::OnlyArgs(OnlyArgs::new(all_args))
                 }
             }
@@ -1188,8 +1187,7 @@ impl DotCall {
                 }
                 _ => {
                     args.push(last_arg);
-                    let all_args =
-                        args.into_iter().map(|a| Arg::Expr(a)).collect();
+                    let all_args = args.into_iter().map(Arg::Expr).collect();
                     CallArgType::OnlyArgs(OnlyArgs::new(all_args))
                 }
             }
@@ -1579,7 +1577,7 @@ impl FlatIf {
         let cond_expr = self.cond_exprs.clone().remove(0);
         let cond = cond_expr.cond.rewrite(context)?;
         let is_cond_one = is_one_line(&cond);
-        let mut if_expr = cond_expr.expr.clone().rewrite(context)?;
+        let mut if_expr = cond_expr.expr.rewrite(context)?;
         let is_if_one = is_one_line(&if_expr);
 
         if FlatIf::one_line_expr_needs_parens(&cond_expr.expr) {
@@ -2086,7 +2084,7 @@ impl Block {
             if let Some(code) = code {
                 return code;
             }
-            max_width = max_width + 10;
+            max_width += 10;
         }
         panic!("exceeded MAX_WIDTH when trying to rewrite an expression in a block")
     }

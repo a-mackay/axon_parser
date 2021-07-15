@@ -70,7 +70,7 @@ pub fn parse_func_to_formatted_string(
     let func = parse_func(axon)?;
     let context = fmt::Context::new(0, max_width);
     let code = func.rewrite(context);
-    code.ok_or_else(|| Error::Rewrite)
+    code.ok_or(Error::Rewrite)
 }
 
 #[cfg(test)]
