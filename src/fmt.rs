@@ -1974,7 +1974,7 @@ impl Func {
         let body = func.body.rewrite(context)?;
         let new_code = add_after_leading_indent(&prefix, &body);
 
-        // We deliberately do not check new_code fits within the given
+        // TODO dont do this We deliberately do not check new_code fits within the given
         // width because we know the body already does, and I want the
         // function parameters to all be on a single line regardless of
         // desired width.
@@ -2043,7 +2043,7 @@ impl Rewrite for Block {
         let mut expr_codes = vec![];
         for expr in exprs {
             let code =
-                Block::rewrite_and_widen_if_necessary(expr, expr_context);
+                Block::rewrite_and_widen_if_necessary(expr, expr_context); // todo remove
             // let code = expr.rewrite(expr_context)?;
             let code = format!("{}\n", code);
             expr_codes.push(ExprAndCode::new(expr.clone(), code));

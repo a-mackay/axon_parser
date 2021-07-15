@@ -52,136 +52,57 @@ macro_rules! impl_try_from_val_ref_for {
     };
 }
 
-macro_rules! impl_line_and_lines_for {
-    ($type_name:ty, $bin_op:expr) => {
-        impl $type_name {
-            pub fn to_line(&self, indent: &Indent) -> Line {
-                let self_prec = Some(self.0.precedence());
-                let bin_op = &self.0;
-                let zero_indent = zero_indent();
-                let left_line = bin_op.lhs.to_line(&zero_indent);
-
-                let left_prec = bin_op.lhs.precedence();
-                let left_line =
-                    group_line_if_necessary(left_line, left_prec, self_prec);
-
-                let right_line = bin_op.rhs.to_line(&zero_indent);
-
-                let right_prec = bin_op.rhs.precedence();
-                let right_line =
-                    group_line_if_necessary(right_line, right_prec, self_prec);
-
-                let left_str = left_line.inner_str();
-                let right_str = right_line.inner_str();
-                let op_symbol = $bin_op.to_symbol();
-                Line::new(
-                    indent.clone(),
-                    format!("{} {} {}", left_str, op_symbol, right_str),
-                )
-            }
-
-            pub fn to_lines(&self, indent: &Indent) -> Lines {
-                let line = self.to_line(indent);
-                vec![line]
-            }
-        }
-    };
-}
-
-fn group_line_if_necessary(
-    line: Line,
-    line_precedence: Option<usize>,
-    compare_precedence: Option<usize>,
-) -> Line {
-    match (line_precedence, compare_precedence) {
-        (Some(line_prec), Some(compare_prec)) => {
-            group_line_with_precedence_if_necessary(
-                line,
-                line_prec,
-                compare_prec,
-            )
-        }
-        _ => line,
-    }
-}
-
-fn group_line_with_precedence_if_necessary(
-    line: Line,
-    line_precedence: usize,
-    compare_precedence: usize,
-) -> Line {
-    use std::cmp::Ordering;
-
-    match line_precedence.cmp(&compare_precedence) {
-        Ordering::Greater => line.grouped(), // Since 1 = highest priority
-        _ => line,
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Add(pub BinOp);
 impl_try_from_val_ref_for!(Add, BinOpId::Add);
-impl_line_and_lines_for!(Add, BinOpId::Add);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct And(pub BinOp);
 impl_try_from_val_ref_for!(And, BinOpId::And);
-impl_line_and_lines_for!(And, BinOpId::And);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cmp(pub BinOp);
 impl_try_from_val_ref_for!(Cmp, BinOpId::Cmp);
-impl_line_and_lines_for!(Cmp, BinOpId::Cmp);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Div(pub BinOp);
 impl_try_from_val_ref_for!(Div, BinOpId::Div);
-impl_line_and_lines_for!(Div, BinOpId::Div);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Eq(pub BinOp);
 impl_try_from_val_ref_for!(Eq, BinOpId::Eq);
-impl_line_and_lines_for!(Eq, BinOpId::Eq);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gt(pub BinOp);
 impl_try_from_val_ref_for!(Gt, BinOpId::Gt);
-impl_line_and_lines_for!(Gt, BinOpId::Gt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Gte(pub BinOp);
 impl_try_from_val_ref_for!(Gte, BinOpId::Gte);
-impl_line_and_lines_for!(Gte, BinOpId::Gte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lt(pub BinOp);
 impl_try_from_val_ref_for!(Lt, BinOpId::Lt);
-impl_line_and_lines_for!(Lt, BinOpId::Lt);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lte(pub BinOp);
 impl_try_from_val_ref_for!(Lte, BinOpId::Lte);
-impl_line_and_lines_for!(Lte, BinOpId::Lte);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mul(pub BinOp);
 impl_try_from_val_ref_for!(Mul, BinOpId::Mul);
-impl_line_and_lines_for!(Mul, BinOpId::Mul);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ne(pub BinOp);
 impl_try_from_val_ref_for!(Ne, BinOpId::Ne);
-impl_line_and_lines_for!(Ne, BinOpId::Ne);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sub(pub BinOp);
 impl_try_from_val_ref_for!(Sub, BinOpId::Sub);
-impl_line_and_lines_for!(Sub, BinOpId::Sub);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Or(pub BinOp);
 impl_try_from_val_ref_for!(Or, BinOpId::Or);
-impl_line_and_lines_for!(Or, BinOpId::Or);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinOp {
@@ -327,63 +248,6 @@ impl BinOpId {
     }
 }
 
-/// Represents lines of Axon code.
-pub type Lines = Vec<Line>;
-
-/// Represents a line of Axon code, including the indentation at the start
-/// of the line.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Line {
-    /// The indentation of the line (excluding the Axon code).
-    pub indent: Indent,
-    /// The remaining part of the line (excluding the indentation).
-    pub line: String,
-}
-
-impl Line {
-    pub fn new(indent: Indent, line: String) -> Self {
-        Self { indent, line }
-    }
-
-    /// Return a new line with parentheses added around it.
-    pub fn grouped(&self) -> Line {
-        self.prefix_str("(").suffix_str(")")
-    }
-
-    /// Return the contents of this line, excluding the indent.
-    pub fn inner_str(&self) -> &str {
-        &self.line
-    }
-
-    /// Return the indent of this line.
-    pub fn indent(&self) -> &Indent {
-        &self.indent
-    }
-
-    /// Return a new line with the string prefixed to the start of the
-    /// contents of this line.
-    pub fn prefix_str(&self, prefix: &str) -> Self {
-        Self::new(self.indent.clone(), format!("{}{}", prefix, self.line))
-    }
-
-    /// Return a new line with the string suffixed to the end of the line.
-    pub fn suffix_str(&self, suffix: &str) -> Self {
-        Self::new(self.indent.clone(), format!("{}{}", self.line, suffix))
-    }
-
-    /// The number of characters in this line, including indentation.
-    pub fn len(&self) -> usize {
-        let code = format!("{}", self);
-        code.chars().count()
-    }
-}
-
-impl std::fmt::Display for Line {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.indent, self.line)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Neg {
     pub operand: Expr,
@@ -392,20 +256,6 @@ pub struct Neg {
 impl Neg {
     pub fn new(operand: Expr) -> Neg {
         Self { operand }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let s = self.operand.to_line(indent);
-        s.prefix_str("-")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = self.operand.to_lines(indent);
-        let first_line =
-            lines.first().expect("Neg should contain at least one line");
-        let new_str = format!("-{}", first_line.inner_str());
-        lines[0] = Line::new(first_line.indent().clone(), new_str);
-        lines
     }
 }
 
@@ -441,69 +291,6 @@ impl TryCatch {
             exception_name,
             catch_expr,
         }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        // try do a; b end catch <(ex)> do c; d end
-        let try_expr = self.try_expr.clone().blockify();
-        let line = try_expr.to_line(indent).prefix_str("try ");
-
-        let line = if let Some(exc_name) = &self.exception_name {
-            line.suffix_str(&format!(" catch ({}) ", exc_name))
-        } else {
-            line.suffix_str(" catch ")
-        };
-
-        let catch_expr = self.catch_expr.clone().blockify();
-        let zero_indent = zero_indent();
-        let catch_line = catch_expr.to_line(&zero_indent);
-        let catch_str = catch_line.inner_str();
-
-        line.suffix_str(catch_str)
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let try_expr = self.try_expr.clone().blockify();
-        let mut lines = try_expr.to_lines(indent);
-
-        assert!(lines.len() >= 3);
-
-        let first_line = lines
-            .first()
-            .expect("TryCatch should contain at least one line");
-        let new_first_line = first_line.prefix_str("try ");
-        lines[0] = new_first_line;
-
-        let last_try_line = lines
-            .last()
-            .expect("TryCatch should contain at least one line")
-            .clone();
-        lines.pop();
-
-        if let Some(exc_name) = &self.exception_name {
-            let new_last_try_line =
-                last_try_line.suffix_str(&format!(" catch ({}) ", exc_name));
-            lines.push(new_last_try_line);
-        } else {
-            let new_last_try_line = last_try_line.suffix_str(" catch ");
-            lines.push(new_last_try_line);
-        }
-
-        // Something like 'end catch (abc) '
-        let end_catch_line = lines.last().unwrap().clone();
-        let end_catch_str = end_catch_line.inner_str();
-        lines.pop();
-
-        let catch_expr = self.catch_expr.clone().blockify();
-        let mut catch_lines = catch_expr.to_lines(indent);
-        let first_catch_line = catch_lines
-            .first()
-            .expect("TryCatch catch expr should contain at least one line");
-        let new_first_catch_line = first_catch_line.prefix_str(end_catch_str);
-        catch_lines[0] = new_first_catch_line;
-
-        lines.append(&mut catch_lines);
-        lines
     }
 }
 
@@ -555,79 +342,6 @@ impl FlatIf {
             else_expr,
         }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let zero_indent = zero_indent();
-        let mut strings = self
-            .cond_exprs
-            .iter()
-            .map(|ce| ce.to_line(&zero_indent).inner_str().to_owned())
-            .collect::<Vec<_>>();
-
-        if let Some(else_expr) = self.else_expr.clone() {
-            let else_expr = else_expr.blockify();
-            let else_line = else_expr.to_line(indent);
-            let else_string = else_line.inner_str().to_owned();
-            strings.push(else_string);
-        }
-
-        let string = strings.join(" else ");
-        Line::new(indent.clone(), string)
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let cond_lines: Vec<Lines> = self
-            .cond_exprs
-            .iter()
-            .map(|ce| ce.to_lines(indent))
-            .collect();
-
-        let mut final_lines: Lines = vec![];
-
-        for mut lines in cond_lines {
-            let last_final_line = final_lines.last();
-            if let Some(last_final_line) = last_final_line {
-                assert!(lines.len() >= 3);
-
-                // Something like 'if (a) do' ...
-                let first_line = lines.first().unwrap();
-
-                let first_line_str = first_line.inner_str();
-                let new_first_line = last_final_line
-                    .suffix_str(&format!(" else {}", first_line_str));
-                lines[0] = new_first_line;
-
-                final_lines.pop();
-                final_lines.append(&mut lines);
-            } else {
-                final_lines.append(&mut lines);
-            }
-        }
-
-        if let Some(else_expr) = self.else_expr.clone() {
-            let last_final_line = final_lines.last().expect(
-                "FlatIf should contain at least one line before its else expr",
-            );
-
-            let else_expr = else_expr.blockify();
-            let mut else_lines = else_expr.to_lines(indent);
-
-            // Should be  'do' ...
-            let first_line = else_lines
-                .first()
-                .expect("FlatIf else expr should contain at least one line");
-
-            let first_line_str = first_line.inner_str();
-            let new_first_line = last_final_line
-                .suffix_str(&format!(" else {}", first_line_str));
-            else_lines[0] = new_first_line;
-
-            final_lines.pop();
-            final_lines.append(&mut else_lines)
-        }
-
-        final_lines
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -641,39 +355,6 @@ pub struct ConditionalExpr {
 impl ConditionalExpr {
     pub fn new(cond: Expr, expr: Expr) -> Self {
         Self { cond, expr }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        // if (something) do a; b; c end
-        let line = self.cond.to_line(indent).grouped();
-        let line = line.prefix_str("if ").suffix_str(" ");
-
-        let expr = self.expr.clone().blockify();
-        let zero_indent = zero_indent();
-        let expr_line = expr.to_line(&zero_indent);
-        let expr_str = expr_line.inner_str();
-
-        line.suffix_str(expr_str)
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let zero_indent = zero_indent();
-        let cond_line = self
-            .cond
-            .to_line(&zero_indent)
-            .grouped()
-            .prefix_str("if ")
-            .suffix_str(" ");
-        let cond_str = cond_line.inner_str();
-
-        let expr = self.expr.clone().blockify();
-        let mut lines = expr.to_lines(indent);
-        let first_line = lines
-            .first()
-            .expect("ConditionalExpr expr should contain at least one line");
-        let new_first_line = first_line.prefix_str(cond_str);
-        lines[0] = new_first_line;
-        lines
     }
 }
 
@@ -711,16 +392,6 @@ impl If {
             }
             None => FlatIf::new(vec![first_cond_expr], None),
         }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let flat_if = self.flatten();
-        flat_if.to_line(indent)
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let flat_if = self.flatten();
-        flat_if.to_lines(indent)
     }
 }
 
@@ -762,25 +433,6 @@ pub struct TrapCall {
 impl TrapCall {
     pub fn new(target: Expr, key: String) -> Self {
         Self { target, key }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.target.to_line(indent);
-        line.suffix_str(&format!("->{}", self.key))
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = self.target.to_lines(indent);
-        let last_line = lines
-            .last()
-            .expect("TrapCall target should have at least one line");
-        let inner_str = last_line.inner_str();
-        let new_inner_str = format!("{}->{}", inner_str, self.key);
-        let new_last_line =
-            Line::new(last_line.indent().clone(), new_inner_str);
-        let _ = lines.pop();
-        lines.push(new_last_line);
-        lines
     }
 }
 
@@ -929,82 +581,6 @@ impl DotCall {
             false
         }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.target.to_line(indent);
-        let zero_indent = zero_indent();
-        let trailing_line = arg_exprs_to_line(&self.args, &zero_indent);
-        let trailing_args_str = trailing_line.inner_str();
-        match &self.func_name {
-            FuncName::TagName(tag_name) => {
-                let tag_name: &str = tag_name.as_ref();
-                if tag_name == "get" {
-                    line.suffix_str(&format!("[{}]", trailing_args_str))
-                } else {
-                    line.suffix_str(&format!(
-                        ".{}({})",
-                        self.func_name, trailing_args_str
-                    ))
-                }
-            }
-            _ => line.suffix_str(&format!(
-                ".{}({})",
-                self.func_name, trailing_args_str
-            )),
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = self.target.to_lines(indent);
-        let last_target_line = lines
-            .last()
-            .expect("DotCall target should contain at least one line");
-
-        let args = &self.args;
-
-        let is_get = match &self.func_name {
-            FuncName::TagName(tag_name) => {
-                let tag_name: &str = tag_name.as_ref();
-                tag_name == "get"
-            }
-            _ => false,
-        };
-
-        if args.is_empty() {
-            let new_last_target_line =
-                last_target_line.suffix_str(&format!(".{}()", self.func_name));
-            lines.pop();
-            lines.push(new_last_target_line);
-        } else if is_get && args.len() == 1 {
-            let only_arg = args.first().unwrap();
-            let zero_indent = zero_indent();
-            let only_arg_line = only_arg.to_line(&zero_indent);
-            let only_arg_str = only_arg_line.inner_str();
-
-            let new_last_target_line =
-                last_target_line.suffix_str(&format!("[{}]", only_arg_str));
-            lines.pop();
-            lines.push(new_last_target_line);
-        } else {
-            let mut arg_lines = arg_exprs_to_lines(args, indent);
-            let first_arg_line = arg_lines
-                .first()
-                .expect("DotCall args should contain at least one line");
-            let first_arg_line_str = first_arg_line.inner_str();
-
-            let new_last_target_line = last_target_line.suffix_str(&format!(
-                ".{}{}",
-                self.func_name, first_arg_line_str
-            ));
-            lines.pop();
-            lines.push(new_last_target_line);
-
-            arg_lines.remove(0);
-            lines.append(&mut arg_lines);
-        }
-
-        lines
-    }
 }
 
 impl TryFrom<&Val> for DotCall {
@@ -1071,17 +647,6 @@ impl std::fmt::Display for FuncName {
     }
 }
 
-impl FuncName {
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let s = format!("{}", self);
-        Line::new(indent.clone(), s)
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        vec![self.to_line(indent)]
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum PartialCallArgument {
     Expr(Expr),
@@ -1089,20 +654,6 @@ pub enum PartialCallArgument {
 }
 
 impl PartialCallArgument {
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        match self {
-            Self::Expr(expr) => expr.to_line(indent),
-            Self::Placeholder => Line::new(indent.clone(), "_".to_owned()),
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        match self {
-            Self::Expr(expr) => expr.to_lines(indent),
-            Self::Placeholder => vec![self.to_line(indent)],
-        }
-    }
-
     fn is_func(&self) -> bool {
         match self {
             Self::Expr(expr) => expr.is_func(),
@@ -1129,24 +680,6 @@ impl PartialCall {
         } else {
             false
         }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let args_line = partial_call_arg_exprs_to_line(&self.args, indent);
-        args_line
-            .prefix_str(&format!("{}(", self.func_name))
-            .suffix_str(")")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = partial_call_arg_exprs_to_lines(&self.args, indent);
-        let first_arg_line = lines
-            .first()
-            .expect("Call args should contain at least one line");
-        let func_name = format!("{}", &self.func_name);
-        let new_first_arg_line = first_arg_line.prefix_str(&func_name);
-        lines[0] = new_first_arg_line;
-        lines
     }
 }
 
@@ -1196,65 +729,6 @@ impl TryFrom<&Val> for PartialCall {
     }
 }
 
-/// Converts expressions, which represent arguments to a function, into a `Line`.
-fn partial_call_arg_exprs_to_line(
-    args: &[PartialCallArgument],
-    indent: &Indent,
-) -> Line {
-    // Should return something like
-    // arg1, arg2, {arg3}
-    // with no enclosing parentheses.
-    let line_strs = args
-        .iter()
-        .map(|arg| arg.to_line(indent).inner_str().to_owned())
-        .collect::<Vec<_>>();
-    let line_str = line_strs.join(", ");
-    Line::new(indent.clone(), line_str)
-}
-
-/// Converts expressions, which represent arguments to a function, into `Lines`.
-fn partial_call_arg_exprs_to_lines(
-    args: &[PartialCallArgument],
-    indent: &Indent,
-) -> Lines {
-    // Should return something like
-    // (arg1, arg2) (lambdaArg1, lambdaArg2) => do
-    //     ...
-    // end
-    if args.is_empty() {
-        vec![Line::new(indent.clone(), "()".to_owned())]
-    } else {
-        let last_arg = args.last().unwrap();
-        if last_arg.is_func() {
-            let func = last_arg.clone();
-            // Format it as a trailing lambda.
-            let mut lines = func.to_lines(indent);
-            let first_func_line = lines
-                .first()
-                .expect("func should contain at least one line");
-
-            // everything except the trailing func expr:
-            let preceding_args = if args.len() == 1 {
-                &[] // The func was the only argument, there are no preceding args.
-            } else {
-                &args[..args.len()]
-            };
-            let zero_indent = zero_indent();
-            let preceding_line =
-                partial_call_arg_exprs_to_line(preceding_args, &zero_indent)
-                    .grouped();
-            let preceding_str = preceding_line.inner_str();
-            let new_first_func_line =
-                first_func_line.prefix_str(&format!("{} ", preceding_str));
-            lines[0] = new_first_func_line;
-            lines
-        } else {
-            let line = partial_call_arg_exprs_to_line(args, indent).grouped();
-            vec![line]
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
     pub target: CallTarget,
@@ -1265,74 +739,6 @@ pub struct Call {
 pub enum CallTarget {
     Expr(Box<Expr>),
     FuncName(FuncName),
-}
-
-impl CallTarget {
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        match self {
-            Self::Expr(expr) => expr.to_line(indent),
-            Self::FuncName(func_name) => func_name.to_line(indent),
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        match self {
-            Self::Expr(expr) => expr.to_lines(indent),
-            Self::FuncName(func_name) => func_name.to_lines(indent),
-        }
-    }
-}
-
-/// Converts expressions, which represent arguments to a function, into a `Line`.
-fn arg_exprs_to_line(args: &[Expr], indent: &Indent) -> Line {
-    // Should return something like
-    // arg1, arg2, {arg3}
-    // with no enclosing parentheses.
-    let line_strs = args
-        .iter()
-        .map(|arg| arg.to_line(indent).inner_str().to_owned())
-        .collect::<Vec<_>>();
-    let line_str = line_strs.join(", ");
-    Line::new(indent.clone(), line_str)
-}
-
-/// Converts expressions, which represent arguments to a function, into `Lines`.
-fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
-    // Should return something like
-    // (arg1, arg2) (lambdaArg1, lambdaArg2) => do
-    //     ...
-    // end
-    if args.is_empty() {
-        vec![Line::new(indent.clone(), "()".to_owned())]
-    } else {
-        let last_arg = args.last().unwrap();
-        if last_arg.is_func() {
-            let func = last_arg.clone();
-            // Format it as a trailing lambda.
-            let mut lines = func.to_lines(indent);
-            let first_func_line = lines
-                .first()
-                .expect("func should contain at least one line");
-
-            // everything except the trailing func expr:
-            let preceding_args = if args.len() == 1 {
-                &[] // The func was the only argument, there are no preceding args.
-            } else {
-                &args[..args.len()]
-            };
-            let zero_indent = zero_indent();
-            let preceding_line =
-                arg_exprs_to_line(preceding_args, &zero_indent).grouped();
-            let preceding_str = preceding_line.inner_str();
-            let new_first_func_line =
-                first_func_line.prefix_str(&format!("{} ", preceding_str));
-            lines[0] = new_first_func_line;
-            lines
-        } else {
-            let line = arg_exprs_to_line(args, indent).grouped();
-            vec![line]
-        }
-    }
 }
 
 impl Call {
@@ -1347,30 +753,6 @@ impl Call {
         } else {
             false
         }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let args_line = arg_exprs_to_line(&self.args, indent);
-        let zero_indent = zero_indent();
-        args_line
-            .prefix_str(&format!(
-                "{}(",
-                self.target.to_line(&zero_indent).inner_str()
-            ))
-            .suffix_str(")")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = arg_exprs_to_lines(&self.args, indent);
-        let first_arg_line = lines
-            .first()
-            .expect("Call args should contain at least one line");
-        let zero_indent = zero_indent();
-        let first_line_prefix =
-            format!("{}", &self.target.to_line(&zero_indent));
-        let new_first_arg_line = first_arg_line.prefix_str(&first_line_prefix);
-        lines[0] = new_first_arg_line;
-        lines
     }
 }
 
@@ -1430,27 +812,6 @@ impl Not {
     pub fn new(operand: Expr) -> Self {
         Self { operand }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.operand.to_line(indent);
-        line.prefix_str("not ")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut lines = self.operand.to_lines(indent);
-        let first_line = lines
-            .first()
-            .expect("Not operand should contain at least one line (first)");
-        let new_first_line = first_line.prefix_str("not (");
-        let last_line = lines
-            .last()
-            .expect("Not operand should contain at least one line (last)");
-        let new_last_line = last_line.suffix_str(")");
-        lines[0] = new_first_line;
-        lines.pop();
-        lines.push(new_last_line);
-        lines
-    }
 }
 
 impl TryFrom<&Val> for Not {
@@ -1476,18 +837,6 @@ pub struct Range {
 impl Range {
     pub fn new(start: Expr, end: Expr) -> Self {
         Self { start, end }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.start.to_line(indent);
-        let zero_indent = zero_indent();
-        let right_line = self.end.to_line(&zero_indent);
-        let right_str = right_line.inner_str();
-        line.suffix_str(&format!("..{}", right_str)).grouped()
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        vec![self.to_line(indent)]
     }
 }
 
@@ -1519,34 +868,6 @@ pub struct Func {
 impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
         Self { params, body }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let func = self.clone();
-        let func = func.blockify();
-        let line = params_to_line(&func.params, indent);
-        let zero_indent = zero_indent();
-        let body_line = func.body.to_line(&zero_indent);
-        let body_str = body_line.inner_str();
-        line.prefix_str("(")
-            .suffix_str(&format!(") => {}", body_str))
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let func = self.clone();
-        let func = func.blockify();
-        let zero_indent = zero_indent();
-        let params_line = params_to_line(&func.params, &zero_indent);
-        let params_str = params_line.inner_str();
-
-        let mut body_lines = func.body.to_lines(indent);
-        let first_body_line = body_lines
-            .first()
-            .expect("Func body should have at least one line");
-        let new_first_body_line =
-            first_body_line.prefix_str(&format!("({}) => ", params_str));
-        body_lines[0] = new_first_body_line;
-        body_lines
     }
 
     pub fn blockify(mut self) -> Self {
@@ -1586,56 +907,9 @@ pub struct Block {
     pub exprs: Vec<Expr>,
 }
 
-fn zero_indent() -> Indent {
-    Indent::new("".to_owned(), 0)
-}
-
-fn exprs_to_line(exprs: &[Expr], indent: &Indent) -> Line {
-    separated_exprs_line(exprs, indent, "; ")
-}
-
-fn comma_separated_exprs_line(exprs: &[Expr], indent: &Indent) -> Line {
-    separated_exprs_line(exprs, indent, ", ")
-}
-
-fn separated_exprs_line(
-    exprs: &[Expr],
-    indent: &Indent,
-    separator: &str,
-) -> Line {
-    let zero_indent = zero_indent();
-    let expr_lines = exprs
-        .iter()
-        .map(|expr| expr.to_line(&zero_indent).inner_str().to_owned())
-        .collect::<Vec<_>>();
-    let line_str = expr_lines.join(separator);
-    Line::new(indent.clone(), line_str)
-}
-
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
         Self { exprs }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = exprs_to_line(&self.exprs, indent);
-        line.prefix_str("do ").suffix_str(" end")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let open_brace = Line::new(indent.clone(), "do".to_owned());
-        let close_brace = Line::new(indent.clone(), "end".to_owned());
-        let mut lines = vec![open_brace];
-
-        let next_indent = indent.increase();
-
-        for expr in &self.exprs {
-            let mut expr_lines = expr.to_lines(&next_indent);
-            lines.append(&mut expr_lines);
-        }
-
-        lines.push(close_brace);
-        lines
     }
 }
 
@@ -1666,64 +940,6 @@ impl Dict {
     pub fn new(map: HashMap<TagName, DictVal>) -> Self {
         Self { map }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let zero_indent = zero_indent();
-        let mut entries = vec![];
-        for (tag_name, dict_val) in self.map.iter() {
-            let line = dict_val.to_line(&zero_indent);
-            let entry = format!("{}: {}", tag_name, line.inner_str());
-            entries.push(entry);
-        }
-        entries.sort();
-        let entries_str = entries.join(", ");
-        Line::new(indent.clone(), format!("{{{}}}", entries_str))
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        if self.map.is_empty() {
-            vec![Line::new(indent.clone(), "{}".to_owned())]
-        } else {
-            let open_brace = Line::new(indent.clone(), "{".to_owned());
-            let close_brace = Line::new(indent.clone(), "}".to_owned());
-            let mut lines = vec![open_brace];
-
-            let next_indent = indent.increase();
-
-            let sorted_entries = sorted_dict_entries(self.map.clone());
-
-            for (tag_name, expr) in sorted_entries {
-                let mut dict_val_lines = expr.to_lines(&next_indent);
-                let first_dict_val_line = dict_val_lines
-                    .first()
-                    .expect("dict val should contain at least one line");
-                let inner_str = first_dict_val_line.inner_str();
-                let new_str = format!("{}: {}", tag_name, inner_str);
-                let new_first_dict_val_line =
-                    Line::new(first_dict_val_line.indent().clone(), new_str);
-                dict_val_lines[0] = new_first_dict_val_line;
-
-                let mut comma_dict_val_lines = dict_val_lines
-                    .into_iter()
-                    .map(|ln| ln.suffix_str(","))
-                    .collect();
-                lines.append(&mut comma_dict_val_lines);
-            }
-
-            lines.push(close_brace);
-            lines
-        }
-    }
-}
-
-fn sorted_dict_entries(
-    dict: HashMap<TagName, DictVal>,
-) -> Vec<(TagName, DictVal)> {
-    let mut entries: Vec<(TagName, DictVal)> = dict.into_iter().collect();
-    entries.sort_by(|(t1, _), (t2, _)| {
-        t1.clone().into_string().cmp(&t2.clone().into_string())
-    });
-    entries
 }
 
 impl TryFrom<&Val> for Dict {
@@ -1843,31 +1059,6 @@ pub enum DictVal {
     RemoveMarker,
 }
 
-impl DictVal {
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        // TODO should this be renamed to to_axon_code?
-        match self {
-            Self::Expr(expr) => expr.to_line(indent),
-            Self::Marker => Line::new(indent.clone(), "marker()".to_owned()),
-            Self::RemoveMarker => {
-                Line::new(indent.clone(), "removeMarker()".to_owned())
-            }
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        match self {
-            Self::Expr(expr) => expr.to_lines(indent),
-            Self::Marker => {
-                vec![Line::new(indent.clone(), "marker()".to_owned())]
-            }
-            Self::RemoveMarker => {
-                vec![Line::new(indent.clone(), "removeMarker()".to_owned())]
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Return {
     pub expr: Expr,
@@ -1876,23 +1067,6 @@ pub struct Return {
 impl Return {
     pub fn new(expr: Expr) -> Self {
         Self { expr }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.expr.to_line(indent);
-        line.prefix_str("return ")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines
-            .first()
-            .expect("Return expr should contain at least one line");
-        let new_inner_str = format!("return {}", first_expr_line.inner_str());
-        let new_first_line =
-            Line::new(first_expr_line.indent().clone(), new_inner_str);
-        expr_lines[0] = new_first_line;
-        expr_lines
     }
 }
 
@@ -1919,23 +1093,6 @@ impl Throw {
     pub fn new(expr: Expr) -> Self {
         Self { expr }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.expr.to_line(indent);
-        line.prefix_str("throw ")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines
-            .first()
-            .expect("Throw expr should contain at least one line");
-        let new_inner_str = format!("throw {}", first_expr_line.inner_str());
-        let new_first_line =
-            Line::new(first_expr_line.indent().clone(), new_inner_str);
-        expr_lines[0] = new_first_line;
-        expr_lines
-    }
 }
 
 impl TryFrom<&Val> for Throw {
@@ -1960,38 +1117,6 @@ pub struct List {
 impl List {
     pub fn new(vals: Vec<Expr>) -> Self {
         Self { vals }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = comma_separated_exprs_line(&self.vals, indent);
-        line.prefix_str("[").suffix_str("]")
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        if self.vals.is_empty() {
-            vec![Line::new(indent.clone(), "[]".to_owned())]
-        } else {
-            let open_brace = Line::new(indent.clone(), "[".to_owned());
-            let close_brace = Line::new(indent.clone(), "]".to_owned());
-            let mut lines = vec![open_brace];
-
-            let next_indent = indent.increase();
-
-            for expr in &self.vals {
-                let mut expr_lines = expr.to_lines(&next_indent);
-                let last_expr_line = expr_lines.last().expect(
-                    "List expressions should contain at least one line",
-                );
-                let new_last_expr_line = last_expr_line.suffix_str(",");
-                expr_lines.pop();
-                expr_lines.push(new_last_expr_line);
-
-                lines.append(&mut expr_lines);
-            }
-
-            lines.push(close_brace);
-            lines
-        }
     }
 }
 
@@ -2199,88 +1324,6 @@ impl Expr {
                 | Self::Or(_)
                 | Self::Sub(_)
         )
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        match self {
-            Self::Add(add) => add.to_line(indent),
-            Self::And(and) => and.to_line(indent),
-            Self::Cmp(cmp) => cmp.to_line(indent),
-            Self::Div(div) => div.to_line(indent),
-            Self::Eq(eq) => eq.to_line(indent),
-            Self::Gt(gt) => gt.to_line(indent),
-            Self::Gte(gte) => gte.to_line(indent),
-            Self::Lt(lt) => lt.to_line(indent),
-            Self::Lte(lte) => lte.to_line(indent),
-            Self::Mul(mul) => mul.to_line(indent),
-            Self::Ne(ne) => ne.to_line(indent),
-            Self::Or(or) => or.to_line(indent),
-            Self::Sub(sub) => sub.to_line(indent),
-            Self::Assign(assign) => assign.to_line(indent),
-            Self::Block(block) => block.to_line(indent),
-            Self::Call(call) => call.to_line(indent),
-            Self::Def(def) => def.to_line(indent),
-            Self::Dict(dict) => dict.to_line(indent),
-            Self::Func(func) => func.to_line(indent),
-            Self::DotCall(dot_call) => dot_call.to_line(indent),
-            Self::Id(id) => {
-                Line::new(indent.clone(), id.name().clone().into_string())
-            }
-            Self::If(iff) => iff.to_line(indent),
-            Self::List(list) => list.to_line(indent),
-            Self::Lit(lit) => {
-                Line::new(indent.clone(), lit.lit().to_axon_code())
-            }
-            Self::Neg(neg) => neg.to_line(indent),
-            Self::Not(not) => not.to_line(indent),
-            Self::PartialCall(partial_call) => partial_call.to_line(indent),
-            Self::Range(range) => range.to_line(indent),
-            Self::Return(ret) => ret.to_line(indent),
-            Self::Throw(throw) => throw.to_line(indent),
-            Self::TrapCall(trap_call) => trap_call.to_line(indent),
-            Self::TryCatch(try_catch) => try_catch.to_line(indent),
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        match self {
-            Self::Add(add) => add.to_lines(indent),
-            Self::And(and) => and.to_lines(indent),
-            Self::Cmp(cmp) => cmp.to_lines(indent),
-            Self::Div(div) => div.to_lines(indent),
-            Self::Eq(eq) => eq.to_lines(indent),
-            Self::Gt(gt) => gt.to_lines(indent),
-            Self::Gte(gte) => gte.to_lines(indent),
-            Self::Lt(lt) => lt.to_lines(indent),
-            Self::Lte(lte) => lte.to_lines(indent),
-            Self::Mul(mul) => mul.to_lines(indent),
-            Self::Ne(ne) => ne.to_lines(indent),
-            Self::Or(or) => or.to_lines(indent),
-            Self::Sub(sub) => sub.to_lines(indent),
-            Self::Assign(assign) => assign.to_lines(indent),
-            Self::Block(block) => block.to_lines(indent),
-            Self::Call(call) => call.to_lines(indent),
-            Self::Def(def) => def.to_lines(indent),
-            Self::Dict(dict) => dict.to_lines(indent),
-            Self::DotCall(dot_call) => dot_call.to_lines(indent),
-            Self::Func(func) => func.to_lines(indent),
-            Self::Id(id) => {
-                vec![Line::new(indent.clone(), id.name().clone().into_string())]
-            }
-            Self::If(iff) => iff.to_lines(indent),
-            Self::List(list) => list.to_lines(indent),
-            Self::Lit(lit) => {
-                vec![Line::new(indent.clone(), lit.lit().to_axon_code())]
-            }
-            Self::Neg(neg) => neg.to_lines(indent),
-            Self::Not(not) => not.to_lines(indent),
-            Self::PartialCall(partial_call) => partial_call.to_lines(indent),
-            Self::Range(range) => range.to_lines(indent),
-            Self::Return(ret) => ret.to_lines(indent),
-            Self::Throw(throw) => throw.to_lines(indent),
-            Self::TrapCall(trap_call) => trap_call.to_lines(indent),
-            Self::TryCatch(try_catch) => try_catch.to_lines(indent),
-        }
     }
 
     /// If the expression is not a block, wrap the expression in a block.
@@ -2495,24 +1538,6 @@ impl Assign {
             expr: Box::new(expr),
         }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.expr.to_line(indent);
-        line.prefix_str(&format!("{} = ", self.name))
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines
-            .first()
-            .expect("Assign expr should contain at least one line");
-        let new_inner_str =
-            format!("{} = {}", self.name, first_expr_line.inner_str());
-        let new_first_line =
-            Line::new(first_expr_line.indent().clone(), new_inner_str);
-        expr_lines[0] = new_first_line;
-        expr_lines
-    }
 }
 
 impl TryFrom<&Val> for Assign {
@@ -2544,24 +1569,6 @@ impl Def {
             expr: Box::new(expr),
         }
     }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        let line = self.expr.to_line(indent);
-        line.prefix_str(&format!("{}: ", self.name))
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        let mut expr_lines = self.expr.to_lines(&indent);
-        let first_expr_line = expr_lines
-            .first()
-            .expect("Def expr should contain at least one line");
-        let new_inner_str =
-            format!("{}: {}", self.name, first_expr_line.inner_str());
-        let new_first_line =
-            Line::new(first_expr_line.indent().clone(), new_inner_str);
-        expr_lines[0] = new_first_line;
-        expr_lines
-    }
 }
 
 impl TryFrom<&Val> for Def {
@@ -2578,15 +1585,6 @@ impl TryFrom<&Val> for Def {
     }
 }
 
-fn params_to_line(params: &[Param], indent: &Indent) -> Line {
-    let lines = params
-        .iter()
-        .map(|param| param.to_line(indent).inner_str().to_owned())
-        .collect::<Vec<_>>();
-    let line_str = lines.join(", ");
-    Line::new(indent.clone(), line_str)
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Param {
     pub name: TagName,
@@ -2596,27 +1594,6 @@ pub struct Param {
 impl Param {
     pub fn new(name: TagName, default: Option<Expr>) -> Self {
         Self { name, default }
-    }
-
-    pub fn to_line(&self, indent: &Indent) -> Line {
-        match &self.default {
-            Some(default) => {
-                let zero_indent = zero_indent();
-                let default_line = default.to_line(&zero_indent);
-                let default_str = default_line.inner_str();
-                Line::new(
-                    indent.clone(),
-                    format!("{}: {}", self.name, default_str),
-                )
-            }
-            None => Line::new(indent.clone(), self.name.clone().into_string()),
-        }
-    }
-
-    pub fn to_lines(&self, indent: &Indent) -> Lines {
-        // TODO handle multi line params
-        let line = self.to_line(indent);
-        vec![line]
     }
 }
 
@@ -3380,46 +2357,6 @@ mod tests {
         let func: Func = val.try_into().unwrap();
         println!("{:#?}", func);
     }
-}
-
-#[cfg(test)]
-mod format_tests {
-    use super::*;
-    use axon_parseast_parser::parse as ap_parse;
-
-    const INDENT: &str = "    ";
-
-    fn idtn(s: &str) -> Id {
-        Id::new(tn(s))
-    }
-
-    fn tn(s: &str) -> TagName {
-        TagName::new(s.to_owned()).expect("s is not a valid tagName")
-    }
-
-    fn zero_ind() -> Indent {
-        Indent::new(INDENT.to_owned(), 0)
-    }
-
-    fn lit_str_expr(s: &str) -> Expr {
-        Expr::Lit(lit_str(s))
-    }
-
-    fn lit_str(s: &str) -> Lit {
-        Lit::new(LitInner::Str(s.to_owned()))
-    }
-
-    fn lit_num_expr(n: f64) -> Expr {
-        Expr::Lit(lit_num(n))
-    }
-
-    fn lit_num(n: f64) -> Lit {
-        Lit::new(LitInner::Num(Number::new(n, None)))
-    }
-
-    fn stringify(lines: &Lines) -> Vec<String> {
-        lines.iter().map(|ln| format!("{}", ln)).collect()
-    }
 
     #[test]
     fn year_month_works() {
@@ -3427,320 +2364,5 @@ mod format_tests {
         assert_eq!(ym.to_axon_code(), "2020-01");
         let ym = YearMonth::new(2020, Month::Dec);
         assert_eq!(ym.to_axon_code(), "2020-12");
-    }
-
-    #[test]
-    fn empty_list_works() {
-        let list = List::new(vec![]);
-        let lines = stringify(&list.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "[]");
-    }
-
-    #[test]
-    fn list_works() {
-        let item1 = lit_num_expr(1.0);
-        let item2 = lit_num_expr(2.0);
-        let item3 = lit_num_expr(3.0);
-        let list = List::new(vec![item1, item2, item3]);
-        let lines = stringify(&list.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "[");
-        assert_eq!(lines[1], "    1,");
-        assert_eq!(lines[2], "    2,");
-        assert_eq!(lines[3], "    3,");
-        assert_eq!(lines[4], "]");
-    }
-
-    #[test]
-    fn empty_dict_works() {
-        let dict = Dict::new(HashMap::new());
-        let lines = stringify(&dict.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "{}");
-    }
-
-    #[test]
-    fn dict_works() {
-        let item1 = DictVal::Expr(lit_num_expr(1.0));
-        let item2 = DictVal::Marker;
-        let item3 = DictVal::RemoveMarker;
-        let mut hash_map = HashMap::new();
-        hash_map.insert(tn("a"), item1);
-        hash_map.insert(tn("b"), item2);
-        hash_map.insert(tn("c"), item3);
-        let dict = Dict::new(hash_map);
-        let lines = stringify(&dict.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "{");
-        assert!(lines.contains(&"    a: 1,".to_owned()));
-        assert!(lines.contains(&"    b: marker(),".to_owned()));
-        assert!(lines.contains(&"    c: removeMarker(),".to_owned()));
-        assert_eq!(lines[4], "}");
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn multi_line_dict_entries_get_sorted_works() {
-        let item1 = DictVal::Expr(lit_num_expr(1.0));
-        let item2 = DictVal::Marker;
-        let item3 = DictVal::RemoveMarker;
-        let mut hash_map = HashMap::new();
-        hash_map.insert(tn("c"), item1);
-        hash_map.insert(tn("b"), item2);
-        hash_map.insert(tn("a"), item3);
-        let dict = Dict::new(hash_map);
-        let lines = stringify(&dict.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "{");
-        assert!(lines.contains(&"    a: removeMarker(),".to_owned()));
-        assert!(lines.contains(&"    b: marker(),".to_owned()));
-        assert!(lines.contains(&"    c: 1,".to_owned()));
-        assert_eq!(lines[4], "}");
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn single_line_dict_entries_get_sorted_works() {
-        let item1 = DictVal::Expr(lit_num_expr(1.0));
-        let item2 = DictVal::Marker;
-        let item3 = DictVal::RemoveMarker;
-        let mut hash_map = HashMap::new();
-        hash_map.insert(tn("c"), item1);
-        hash_map.insert(tn("b"), item2);
-        hash_map.insert(tn("a"), item3);
-        let dict = Dict::new(hash_map);
-        let line = format!("{}", &dict.to_line(&zero_ind()));
-        assert_eq!(line, "{a: removeMarker(), b: marker(), c: 1}");
-    }
-
-    #[test]
-    fn single_line_def_works() {
-        let expr = lit_num_expr(1.0);
-        let def = Def::new(tn("varName"), expr);
-        let lines = stringify(&def.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "varName: 1");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn single_line_assign_works() {
-        let expr = lit_num_expr(1.0);
-        let assign = Assign::new(tn("varName"), expr);
-        let lines = stringify(&assign.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "varName = 1");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn multi_line_assign_works() {
-        let expr = Expr::Block(Block::new(vec![lit_num_expr(1.0)]));
-        let assign = Assign::new(tn("varName"), expr);
-        let lines = stringify(&assign.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "varName = do");
-        assert_eq!(lines[1], "    1");
-        assert_eq!(lines[2], "end");
-        assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn multi_line_def_works() {
-        let expr = Expr::Block(Block::new(vec![lit_num_expr(1.0)]));
-        let def = Def::new(tn("varName"), expr);
-        let lines = stringify(&def.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "varName: do");
-        assert_eq!(lines[1], "    1");
-        assert_eq!(lines[2], "end");
-        assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn single_line_trap_call_works() {
-        let expr = lit_num_expr(1.0);
-        let trap = TrapCall::new(expr, "varName".to_owned());
-        let lines = stringify(&trap.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "1->varName");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn multi_line_trap_call_works() {
-        let item1 = DictVal::Expr(lit_num_expr(1.0));
-        let mut hash_map = HashMap::new();
-        hash_map.insert(tn("a"), item1);
-        let dict = Dict::new(hash_map);
-
-        let trap = TrapCall::new(Expr::Dict(dict), "varName".to_owned());
-        let lines = stringify(&trap.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "{");
-        assert_eq!(lines[1], "    a: 1,");
-        assert_eq!(lines[2], "}->varName");
-        assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn func_works() {
-        let val = &ap_parse(r#"{type:"func", params:[{name:"point"}, {name:"dates"}, {name:"minuteInterval", def:{type:"literal", val:15}}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"dates"}, rhs:{type:"sub", lhs:{type:"var", name:"dates"}, rhs:{type:"literal", val:2day}}}, {type:"def", name:"startt", val:{type:"dotCall", target:{type:"var", name:"start"}, args:[{type:"dotCall", target:{type:"var", name:"toDateSpan"}, args:[{type:"var", name:"dates"}]}]}}, {type:"def", name:"endt", val:{type:"dotCall", target:{type:"var", name:"end"}, args:[{type:"dotCall", target:{type:"var", name:"toDateSpan"}, args:[{type:"var", name:"dates"}]}]}}, {type:"def", name:"intCount", val:{type:"if", cond:{type:"gt", lhs:{type:"sub", lhs:{type:"var", name:"endt"}, rhs:{type:"var", name:"startt"}}, rhs:{type:"literal", val:0}}, ifExpr:{type:"div", lhs:{type:"mul", lhs:{type:"dotCall", target:{type:"var", name:"to"}, args:[{type:"dotCall", target:{type:"var", name:"to"}, args:[{type:"sub", lhs:{type:"var", name:"endt"}, rhs:{type:"var", name:"startt"}}, {type:"literal", val:1day}]}, {type:"literal", val:1}]}, rhs:{type:"literal", val:1440}}, rhs:{type:"var", name:"minuteInterval"}}, elseExpr:{type:"div", lhs:{type:"literal", val:1440}, rhs:{type:"var", name:"minuteInterval"}}}}, {type:"assign", lhs:{type:"var", name:"intCount"}, rhs:{type:"sub", lhs:{type:"var", name:"intCount"}, rhs:{type:"literal", val:1}}}, {type:"def", name:"trut", val:{type:"list", vals:[]}}, {type:"dotCall", target:{type:"var", name:"each"}, args:[{type:"range", start:{type:"literal", val:0}, end:{type:"var", name:"intCount"}}, {type:"func", params:[{name:"x"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"trut"}, rhs:{type:"dotCall", target:{type:"var", name:"add"}, args:[{type:"var", name:"trut"}, {type:"dict", names:["ts", "v0"], vals:[{type:"add", lhs:{type:"call", target:{type:"var", name:"dateTime"}, args:[{type:"var", name:"startt"}, {type:"literal", val:00:00:00}, {type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"point"}, {type:"literal", val:"tz"}]}]}, rhs:{type:"dotCall", target:{type:"var", name:"to"}, args:[{type:"mul", lhs:{type:"var", name:"x"}, rhs:{type:"var", name:"minuteInterval"}}, {type:"literal", val:1min}]}}, {type:"neg", operand:{type:"literal", val:2}}]}]}}]}}]}, {type:"assign", lhs:{type:"var", name:"trut"}, rhs:{type:"dotCall", target:{type:"var", name:"addMeta"}, args:[{type:"dotCall", target:{type:"var", name:"toGrid"}, args:[{type:"var", name:"trut"}]}, {type:"dict", names:["hisStart", "hisEnd"], vals:[{type:"call", target:{type:"var", name:"dateTime"}, args:[{type:"var", name:"startt"}, {type:"literal", val:00:00:00}, {type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"point"}, {type:"literal", val:"tz"}]}]}, {type:"call", target:{type:"var", name:"dateTime"}, args:[{type:"var", name:"endt"}, {type:"literal", val:23:59:59}, {type:"trapCall", target:{type:"var", name:"trap"}, args:[{type:"var", name:"point"}, {type:"literal", val:"tz"}]}]}]}]}}, {type:"def", name:"datae", val:{type:"dotCall", target:{type:"var", name:"hisRollup"}, args:[{type:"dotCall", target:{type:"var", name:"hisRead"}, args:[{type:"var", name:"point"}, {type:"var", name:"dates"}, {type:"dict", names:["limit"], vals:[{type:"literal", val:null}]}]}, {type:"var", name:"sum"}, {type:"literal", val:15min}]}}, {type:"if", cond:{type:"eq", lhs:{type:"var", name:"datae"}, rhs:{type:"literal", val:null}}, ifExpr:{type:"return", expr:{type:"dotCall", target:{type:"var", name:"hisFindPeriods"}, args:[{type:"var", name:"trut"}, {type:"func", params:[{name:"x"}], body:{type:"eq", lhs:{type:"var", name:"x"}, rhs:{type:"neg", operand:{type:"literal", val:2}}}}]}}}, {type:"if", cond:{type:"eq", lhs:{type:"dotCall", target:{type:"var", name:"size"}, args:[{type:"var", name:"datae"}]}, rhs:{type:"literal", val:0}}, ifExpr:{type:"return", expr:{type:"dotCall", target:{type:"var", name:"hisFindPeriods"}, args:[{type:"var", name:"trut"}, {type:"func", params:[{name:"x"}], body:{type:"eq", lhs:{type:"var", name:"x"}, rhs:{type:"neg", operand:{type:"literal", val:2}}}}]}}}, {type:"def", name:"thereisNullPeriod", val:{type:"dotCall", target:{type:"var", name:"findAll"}, args:[{type:"dotCall", target:{type:"var", name:"hisRollup"}, args:[{type:"dotCall", target:{type:"var", name:"hisFindPeriods"}, args:[{type:"dotCall", target:{type:"var", name:"map"}, args:[{type:"call", target:{type:"var", name:"hisJoin"}, args:[{type:"list", vals:[{type:"var", name:"datae"}, {type:"var", name:"trut"}]}]}, {type:"func", params:[{name:"x"}], body:{type:"dict", names:["ts", "v0"], vals:[{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"var", name:"x"}, {type:"literal", val:"ts"}]}, {type:"if", cond:{type:"eq", lhs:{type:"dotCall", target:{type:"var", name:"size"}, args:[{type:"dotCall", target:{type:"var", name:"findAll"}, args:[{type:"dotCall", target:{type:"var", name:"vals"}, args:[{type:"var", name:"x"}]}, {type:"func", params:[{name:"y"}], body:{type:"ne", lhs:{type:"var", name:"y"}, rhs:{type:"literal", val:null}}}]}]}, rhs:{type:"literal", val:2}}, ifExpr:{type:"neg", operand:{type:"literal", val:1}}, elseExpr:{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}}]}}]}, {type:"func", params:[{name:"x"}], body:{type:"eq", lhs:{type:"var", name:"x"}, rhs:{type:"neg", operand:{type:"literal", val:1}}}}]}, {type:"var", name:"sum"}, {type:"literal", val:1h}]}, {type:"func", params:[{name:"x"}], body:{type:"ge", lhs:{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"var", name:"x"}, {type:"literal", val:"v0"}]}, rhs:{type:"literal", val:1h}}}]}}, {type:"if", cond:{type:"eq", lhs:{type:"var", name:"thereisNullPeriod"}, rhs:{type:"literal", val:null}}, ifExpr:{type:"return", expr:{type:"literal", val:null}}}, {type:"if", cond:{type:"eq", lhs:{type:"dotCall", target:{type:"var", name:"size"}, args:[{type:"var", name:"thereisNullPeriod"}]}, rhs:{type:"literal", val:0}}, ifExpr:{type:"return", expr:{type:"literal", val:null}}, elseExpr:{type:"return", expr:{type:"call", target:{type:"var", name:"hisSlidingWindows"}, args:[{type:"var", name:"dates"}, {type:"literal", val:24h}, {type:"literal", val:24h}]}}}]}}"#).unwrap();
-        let func: Func = val.try_into().unwrap();
-        let strings = stringify(&func.to_lines(&zero_ind()));
-        for s in strings {
-            println!("{}", s);
-        }
-    }
-
-    #[test]
-    fn escaped_chars_work() {
-        let val = &ap_parse(r#"{type:"literal", val:"Hello\nWorld\t!\$ \\"}"#)
-            .unwrap();
-        let expr: Expr = val.try_into().unwrap();
-
-        let lines = stringify(&expr.to_lines(&zero_ind()));
-        let expected = r#""Hello\nWorld\t!\$ \\""#;
-        assert_eq!(lines[0], expected);
-    }
-
-    #[test]
-    fn simple_precedence_left_works() {
-        // (1 + 2) / 3
-        let add_bin_op =
-            BinOp::new(lit_num_expr(1.0), BinOpId::Add, lit_num_expr(2.0));
-        let add = Box::new(Add(add_bin_op));
-        let div_bin_op =
-            BinOp::new(Expr::Add(add), BinOpId::Div, lit_num_expr(3.0));
-        let div = Div(div_bin_op);
-        let lines = stringify(&div.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "(1 + 2) / 3");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn simple_precedence_right_works() {
-        // (1 + 2) / 3
-        let add_bin_op =
-            BinOp::new(lit_num_expr(2.0), BinOpId::Add, lit_num_expr(3.0));
-        let add = Box::new(Add(add_bin_op));
-        let div_bin_op =
-            BinOp::new(lit_num_expr(1.0), BinOpId::Div, Expr::Add(add));
-        let div = Div(div_bin_op);
-        let lines = stringify(&div.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "1 / (2 + 3)");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn flat_if_no_nesting_with_no_else_works() {
-        let cond1 = Expr::Id(idtn("a"));
-        let expr1 = lit_str_expr("a-expr");
-        let ce1 = ConditionalExpr::new(cond1, expr1);
-        let flat_if = FlatIf::new(vec![ce1], None);
-        let lines = stringify(&flat_if.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "if (a) do");
-        assert_eq!(lines[1], "    \"a-expr\"");
-        assert_eq!(lines[2], "end");
-        assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn flat_if_no_nesting_with_else_works() {
-        let cond1 = Expr::Id(idtn("a"));
-        let expr1 = lit_str_expr("a-expr");
-        let ce1 = ConditionalExpr::new(cond1, expr1);
-
-        let else1 = lit_str_expr("else-expr");
-
-        let flat_if = FlatIf::new(vec![ce1], Some(else1));
-        let lines = stringify(&flat_if.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "if (a) do");
-        assert_eq!(lines[1], "    \"a-expr\"");
-        assert_eq!(lines[2], "end else do");
-        assert_eq!(lines[3], "    \"else-expr\"");
-        assert_eq!(lines[4], "end");
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn flat_if_some_nesting_with_no_else_works() {
-        let cond1 = Expr::Id(idtn("a"));
-        let expr1 = lit_str_expr("a-expr");
-        let ce1 = ConditionalExpr::new(cond1, expr1);
-
-        let cond2 = Expr::Id(idtn("b"));
-        let expr2 = lit_str_expr("b-expr");
-        let ce2 = ConditionalExpr::new(cond2, expr2);
-
-        let else1 = lit_str_expr("else-expr");
-
-        let flat_if = FlatIf::new(vec![ce1, ce2], Some(else1));
-        let lines = stringify(&flat_if.to_lines(&zero_ind()));
-
-        assert_eq!(lines[0], "if (a) do");
-        assert_eq!(lines[1], "    \"a-expr\"");
-        assert_eq!(lines[2], "end else if (b) do");
-        assert_eq!(lines[3], "    \"b-expr\"");
-        assert_eq!(lines[4], "end else do");
-        assert_eq!(lines[5], "    \"else-expr\"");
-        assert_eq!(lines[6], "end");
-        assert_eq!(lines.len(), 7);
-    }
-
-    #[test]
-    fn simple_try_catch_no_exc_name_works() {
-        let try_expr = lit_str_expr("try-expr");
-        let catch_expr = lit_str_expr("catch-expr");
-        let tc = TryCatch::new(try_expr, None, catch_expr);
-
-        let lines = stringify(&tc.to_lines(&zero_ind()));
-
-        assert_eq!(lines[0], "try do");
-        assert_eq!(lines[1], "    \"try-expr\"");
-        assert_eq!(lines[2], "end catch do");
-        assert_eq!(lines[3], "    \"catch-expr\"");
-        assert_eq!(lines[4], "end");
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn simple_try_catch_with_exc_name_works() {
-        let try_expr = lit_str_expr("try-expr");
-        let catch_expr = lit_str_expr("catch-expr");
-        let tc = TryCatch::new(try_expr, Some("ex".to_owned()), catch_expr);
-
-        let lines = stringify(&tc.to_lines(&zero_ind()));
-
-        assert_eq!(lines[0], "try do");
-        assert_eq!(lines[1], "    \"try-expr\"");
-        assert_eq!(lines[2], "end catch (ex) do");
-        assert_eq!(lines[3], "    \"catch-expr\"");
-        assert_eq!(lines[4], "end");
-        assert_eq!(lines.len(), 5);
-    }
-
-    #[test]
-    fn partial_call_works() {
-        let func_name = FuncName::TagName(tn("utilsAssert"));
-        let null = PartialCallArgument::Placeholder;
-        let arg2 = PartialCallArgument::Expr(Expr::Lit(lit_num(1.0)));
-        let pc = PartialCall::new(func_name, vec![null, arg2]);
-
-        let lines = stringify(&pc.to_lines(&zero_ind()));
-
-        assert_eq!(lines[0], "utilsAssert(_, 1)");
-        assert_eq!(lines.len(), 1);
-    }
-
-    #[test]
-    fn get_single_line_works() {
-        let axon = r#"{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"dict", names:["x"], vals:[{type:"literal", val:0}]}, {type:"literal", val:"x"}]}"#;
-        let val = &axon_parseast_parser::parse(axon).unwrap();
-        let dot_call: DotCall = val.try_into().unwrap();
-        let line = dot_call.to_line(&zero_ind());
-        let line = format!("{}", line);
-        assert_eq!(line, "{x: 0}[\"x\"]");
-    }
-
-    #[test]
-    fn get_multi_target_line_works() {
-        let axon = r#"{type:"dotCall", target:{type:"var", name:"get"}, args:[{type:"dict", names:["x"], vals:[{type:"literal", val:0}]}, {type:"literal", val:"x"}]}"#;
-        let val = &axon_parseast_parser::parse(axon).unwrap();
-        let dot_call: DotCall = val.try_into().unwrap();
-        let lines = stringify(&dot_call.to_lines(&zero_ind()));
-        assert_eq!(lines[0], "{");
-        assert_eq!(lines[1], "    x: 0,");
-        assert_eq!(lines[2], "}[\"x\"]");
     }
 }
