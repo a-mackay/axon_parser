@@ -2476,7 +2476,7 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Block, Def, Dict, DotCall, Expr,
+        Add, And, Assign, BinOp, BinOpId, Block, Call, CallTarget, Def, Dict, DotCall, Expr,
         FuncName, Id, If, List, Lit, LitInner, Mul, Neg, Not, Or, Param,
         Return, Sub, Throw, TrapCall, TryCatch,
     };
@@ -3454,5 +3454,50 @@ end";
 
         let code = dot_call.rewrite(nc(1, 17)).unwrap();
         assert_eq!(code, " value\n     .function1()\n     .function2()");
+    }
+
+    #[test]
+    fn call_oneline() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value()")
+    }
+
+    #[test]
+    fn call_oneline_arg() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1)];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value(1)")
+    }
+
+    #[test]
+    fn call_oneline_args() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2)];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value(1, 2)")
+    }
+
+    #[test]
+    fn call_multiline_arg() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1)];
+        let call = Call::new(target, args);
+        let code = call.rewrite(nc(1, 7)).unwrap();
+        assert_eq!(code, " value(\n     1\n )")
+    }
+
+    #[test]
+    fn call_multiline_args() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2)];
+        let call = Call::new(target, args);
+        let code = call.rewrite(nc(1, 7)).unwrap();
+        assert_eq!(code, " value(\n     1,\n     2\n )")
     }
 }
