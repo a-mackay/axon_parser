@@ -816,10 +816,71 @@ impl TryFrom<&Val> for TrapCall {
     }
 }
 
+/// 2 or more DotCalls chained together, like a.b().c()
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DotCallsChain {
+    /// The first argument (at the start of the chain). This cannot be a DotCall.
+    pub(crate) target: Expr,
+    pub(crate) chain: Vec<ChainedDotCall>,
+}
+
+/// Only used to build a DotCallsChain
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BuildDotCallsChain {
+    pub(crate) target: Option<Expr>,
+    pub(crate) chain: Vec<ChainedDotCall>,
+}
+
+impl BuildDotCallsChain {
+    fn build(self) -> Option<DotCallsChain> {
+        if self.chain.len() < 2 {
+            // If there is 1 element in the chain, this is just a regular
+            // DotCall on a non-DotCall target.
+            return None;
+        }
+
+        Some(DotCallsChain {
+            target: self.target?,
+            chain: self.chain,
+        })
+    }
+
+    fn new() -> Self {
+        Self {
+            target: None,
+            chain: vec![],
+        }
+    }
+
+    fn add(&self, cdc: ChainedDotCall) -> Self {
+        let mut new_chain = self.chain.clone();
+        new_chain.insert(0, cdc);
+        Self {
+            target: self.target.clone(),
+            chain: new_chain,
+        }
+    }
+
+    fn set_target(&self, target: Expr) -> Self {
+        Self {
+            target: Some(target),
+            chain: self.chain.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ChainedDotCall {
+    pub(crate) func_name: FuncName,
+    pub(crate) args: Vec<Expr>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DotCall {
     pub func_name: FuncName,
+    /// The first argument (at the front of the dot).
     pub target: Box<Expr>,
+    /// Arguments after the dot.
     pub args: Vec<Expr>,
 }
 
@@ -833,6 +894,32 @@ impl DotCall {
             func_name,
             target,
             args,
+        }
+    }
+
+    pub(crate) fn to_chain(&self) -> Option<DotCallsChain> {
+        self.to_chain_inner(BuildDotCallsChain::new()).build()
+    }
+
+    fn to_chain_inner(&self, build: BuildDotCallsChain) -> BuildDotCallsChain {
+        let cdc = self.to_chained_dot_call();
+        let build = build.add(cdc);
+
+        match self.target.as_ref() {
+            Expr::DotCall(dot_call) => {
+                dot_call.to_chain_inner(build)
+            },
+            _ => {
+                let initial_target = self.target.as_ref().clone();
+                build.set_target(initial_target)
+            }
+        }
+    }
+
+    fn to_chained_dot_call(&self) -> ChainedDotCall {
+        ChainedDotCall {
+            func_name: self.func_name.clone(),
+            args: self.args.clone(),
         }
     }
 
