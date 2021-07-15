@@ -3500,4 +3500,47 @@ end";
         let code = call.rewrite(nc(1, 7)).unwrap();
         assert_eq!(code, " value(\n     1,\n     2\n )")
     }
+
+    //=====================================================================
+    #[test]
+    fn call_oneline_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value() () => 100")
+    }
+
+    #[test]
+    fn call_oneline_arg_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value(1) () => 100")
+    }
+
+    #[test]
+    fn call_oneline_args_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        assert_eq!(code, "value(1, 2) () => 100")
+    }
+
+    //====================================================================
+    #[test]
+    fn call_multilinetarget_works() {
+        let target = CallTarget::Expr(Box::new(Expr::Block(Block::new(vec![
+            ex_id("someFuncName"),
+        ]))));
+        let args = vec![ex_lit_num(1)];
+        let call = Call::new(target, args);
+        let code = call.rewrite(c()).unwrap();
+        let expected = "(do
+    someFuncName
+end)(1)";
+        assert_eq!(code, expected)
+    }
 }
