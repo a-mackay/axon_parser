@@ -391,9 +391,7 @@ pub struct Neg {
 
 impl Neg {
     pub fn new(operand: Expr) -> Neg {
-        Self {
-            operand,
-        }
+        Self { operand }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -642,10 +640,7 @@ pub struct ConditionalExpr {
 
 impl ConditionalExpr {
     pub fn new(cond: Expr, expr: Expr) -> Self {
-        Self {
-            cond,
-            expr,
-        }
+        Self { cond, expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -766,10 +761,7 @@ pub struct TrapCall {
 
 impl TrapCall {
     pub fn new(target: Expr, key: String) -> Self {
-        Self {
-            target,
-            key,
-        }
+        Self { target, key }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1042,10 +1034,7 @@ pub struct PartialCall {
 
 impl PartialCall {
     pub fn new(func_name: FuncName, args: Vec<PartialCallArgument>) -> Self {
-        Self {
-            func_name,
-            args,
-        }
+        Self { func_name, args }
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
@@ -1263,10 +1252,7 @@ fn arg_exprs_to_lines(args: &[Expr], indent: &Indent) -> Lines {
 
 impl Call {
     pub fn new(target: CallTarget, args: Vec<Expr>) -> Self {
-        Self {
-            target,
-            args,
-        }
+        Self { target, args }
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
@@ -1357,9 +1343,7 @@ pub struct Not {
 
 impl Not {
     pub fn new(operand: Expr) -> Self {
-        Self {
-            operand,
-        }
+        Self { operand }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1406,10 +1390,7 @@ pub struct Range {
 
 impl Range {
     pub fn new(start: Expr, end: Expr) -> Self {
-        Self {
-            start,
-            end,
-        }
+        Self { start, end }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1452,10 +1433,7 @@ pub struct Func {
 
 impl Func {
     pub fn new(params: Vec<Param>, body: Expr) -> Self {
-        Self {
-            params,
-            body,
-        }
+        Self { params, body }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1523,7 +1501,6 @@ pub struct Block {
     pub exprs: Vec<Expr>,
 }
 
-
 fn zero_indent() -> Indent {
     Indent::new("".to_owned(), 0)
 }
@@ -1552,9 +1529,7 @@ fn separated_exprs_line(
 
 impl Block {
     pub fn new(exprs: Vec<Expr>) -> Self {
-        Self {
-            exprs,
-        }
+        Self { exprs }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1604,9 +1579,7 @@ pub struct Dict {
 
 impl Dict {
     pub fn new(map: HashMap<TagName, DictVal>) -> Self {
-        Self {
-            map,
-        }
+        Self { map }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1817,9 +1790,7 @@ pub struct Return {
 
 impl Return {
     pub fn new(expr: Expr) -> Self {
-        Self {
-            expr,
-        }
+        Self { expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1861,9 +1832,7 @@ pub struct Throw {
 
 impl Throw {
     pub fn new(expr: Expr) -> Self {
-        Self {
-            expr,
-        }
+        Self { expr }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1905,9 +1874,7 @@ pub struct List {
 
 impl List {
     pub fn new(vals: Vec<Expr>) -> Self {
-        Self {
-            vals,
-        }
+        Self { vals }
     }
 
     pub fn to_line(&self, indent: &Indent) -> Line {
@@ -1966,9 +1933,7 @@ pub struct Id {
 
 impl Id {
     pub fn new(name: TagName) -> Self {
-        Self {
-            name,
-        }
+        Self { name }
     }
 
     pub fn name(&self) -> &TagName {
@@ -2613,9 +2578,7 @@ pub struct Lit {
 
 impl Lit {
     pub fn new(lit: LitInner) -> Self {
-        Self {
-            lit,
-        }
+        Self { lit }
     }
 
     pub fn lit(&self) -> &LitInner {

@@ -537,8 +537,7 @@ impl Call {
         }
 
         // Fallback, just write the entire call across multiple lines.
-        let call5 = cat
-            .rewrite(context, style(CallArgLayout::MultiLine))?;
+        let call5 = cat.rewrite(context, style(CallArgLayout::MultiLine))?;
         let prefix5 = target.trim_end();
         let suffix5 = call5.trim_start();
         let code5 = format!("{}{}", prefix5, suffix5);
@@ -2045,7 +2044,9 @@ impl Rewrite for Block {
 
         let mut expr_codes = vec![];
         for expr in exprs {
-            let code = expr.rewrite(expr_context)?;
+            let code =
+                Block::rewrite_and_widen_if_necessary(expr, expr_context);
+            // let code = expr.rewrite(expr_context)?;
             let code = format!("{}\n", code);
             expr_codes.push(ExprAndCode::new(expr.clone(), code));
         }
@@ -2073,6 +2074,21 @@ impl Rewrite for Block {
         } else {
             None
         }
+    }
+}
+
+impl Block {
+    fn rewrite_and_widen_if_necessary(expr: &Expr, context: Context) -> String {
+        let mut max_width = context.max_width();
+        while max_width < MAX_WIDTH {
+            let current_context = Context::new(context.indent, max_width);
+            let code = expr.rewrite(current_context);
+            if let Some(code) = code {
+                return code;
+            }
+            max_width = max_width + 10;
+        }
+        panic!("exceeded MAX_WIDTH when trying to rewrite an expression in a block")
     }
 }
 
@@ -2471,9 +2487,9 @@ fn needs_parens(
 mod tests {
     use super::*;
     use crate::ast::{
-        Add, And, Assign, BinOp, BinOpId, Block, Call, CallTarget, Def, Dict, DotCall, Expr,
-        FuncName, Id, If, List, Lit, LitInner, Mul, Neg, Not, Or, Param,
-        Return, Sub, Throw, TrapCall, TryCatch,
+        Add, And, Assign, BinOp, BinOpId, Block, Call, CallTarget, Def, Dict,
+        DotCall, Expr, FuncName, Id, If, List, Lit, LitInner, Mul, Neg, Not,
+        Or, Param, Return, Sub, Throw, TrapCall, TryCatch,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -3554,9 +3570,10 @@ end";
     //====================================================================
     #[test]
     fn call_multilinetarget_works() {
-        let target = CallTarget::Expr(Box::new(Expr::Block(Block::new(vec![
-            ex_id("someFuncName"),
-        ]))));
+        let target =
+            CallTarget::Expr(Box::new(Expr::Block(Block::new(vec![ex_id(
+                "someFuncName",
+            )]))));
         let args = vec![ex_lit_num(1)];
         let call = Call::new(target, args);
         let code = call.rewrite(c()).unwrap();

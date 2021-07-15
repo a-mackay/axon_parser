@@ -72,3 +72,13 @@ pub fn parse_func_to_formatted_string(
     let code = func.rewrite(context);
     code.ok_or_else(|| Error::Rewrite)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        let code = include_str!("./test.txt");
+        let x = crate::parse_func_to_formatted_string(code, 108).unwrap(); // todo fails at 107
+        println!("{}", x);
+    }
+}
