@@ -439,68 +439,222 @@ impl DotCall {
         let target =
             self.rewrite_target(context, target_can_have_trailing_lambda)?;
 
-        dbg!("has target");
-        if is_one_line(&target) {
-            dbg!("is one line target");
-            // Initially just see if putting only the lambda on multiple lines
-            // works:
-            let style = CallArgStyle::new(CallArgLayout::OneLineArgsMultiLineLambda, lambda_pos);
-            let call = self.call_arg_type().rewrite(context, style)?;
-            let prefix = format!("{target}.{name}", target = target.trim(), name = self.func_name);
-            let code = add_after_leading_indent(&prefix, &call);
-            dbg!(&code);
-            if context.str_within_max_width(&code) {
-                dbg!("a");
-                return Some(code);
-            } else {
-                dbg!("c");
-                // Now see if putting all args on multiple lines works:
-                let style = CallArgStyle::new(CallArgLayout::MultiLine, lambda_pos);
-                let call = self.call_arg_type().rewrite(context, style)?;
-                let prefix = format!("{target}.{name}", target = target.trim(), name = self.func_name);
-                let code = add_after_leading_indent(&prefix, &call);
-                if context.str_within_max_width(&code) {
-                    dbg!(&code);
-                dbg!("c");
-                    return Some(code);
-                }
-            }
-        }
+        let has_lambda = self.has_lambda_last_arg();
+        let is_target_one_line = is_one_line(&target);
 
-        // We now decide to put the call on a separate line to the target:
-        let call_context = context.increase_indent();
-        // Try put the call all on one line first:
-        let style = CallArgStyle::new(CallArgLayout::OneLine, lambda_pos);
-        let call = self.call_arg_type().rewrite(call_context, style)?;
-        let prefix = format!(".{}", self.func_name);
-        let call = add_after_leading_indent(&prefix, &call);
-        let code = format!("{target}\n{call}", target = target, call = call);
-        if context.str_within_max_width(&code) {
-            return Some(code);
-        } else {
-            // Try put the just the lambda over multiple lines:
-            let style = CallArgStyle::new(CallArgLayout::OneLineArgsMultiLineLambda, lambda_pos);
-            let call = self.call_arg_type().rewrite(call_context, style)?;
-            let prefix = format!(".{}", self.func_name);
-            let call = add_after_leading_indent(&prefix, &call);
-            let code = format!("{target}\n{call}", target = target, call = call);
-            if context.str_within_max_width(&code) {
-                return Some(code);
-            } else {
-                // Try put the call all on one line first:
-                let style = CallArgStyle::new(CallArgLayout::MultiLine, lambda_pos);
-                let call = self.call_arg_type().rewrite(call_context, style)?;
-                let prefix = format!(".{}", self.func_name);
-                let call = add_after_leading_indent(&prefix, &call);
-                let code = format!("{target}\n{call}", target = target, call = call);
-                if context.str_within_max_width(&code) {
-                    return Some(code);
-                } else {
-                    return None;
-                }
-            }
+        match (is_target_one_line, has_lambda) {
+            (true, true) => self.rewrite_ml_targetone_lambda(context, lambda_pos),
+            (true, false) => self.rewrite_ml_targetone(context),
+            (false, true) => self.rewrite_ml_targetmulti_lambda(context, lambda_pos),
+            (false, false) => self.rewrite_ml_targetmulti(context),
         }
     }
+
+    fn rewrite_ml_targetone_lambda(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+        let target_can_have_trailing_lambda = false;
+        let target =
+            self.rewrite_target(context, target_can_have_trailing_lambda)?;
+        if !is_one_line(&target) {
+            panic!("expected target to be one line");
+        }
+        if !self.has_lambda_last_arg() {
+            panic!("expected self to have lambda last arg");
+        }
+        let name = &self.func_name;
+
+        let cat = self.call_arg_type();
+        let style = |layout: CallArgLayout| {
+            CallArgStyle::new(layout, lambda_pos)
+        };
+
+        // See if putting only the lambda on multiple lines
+        // works:
+        let call1 = cat.rewrite(context, style(CallArgLayout::OneLineArgsMultiLineLambda))?;
+        let prefix1 = format!("{target}.{name}", target = target.trim(), name = name);
+        let code1 = add_after_leading_indent(&prefix1, &call1);
+        if context.str_within_max_width(&code1) {
+            return Some(code1);
+        }
+
+        // Now see if putting all args on multiple lines works:
+        let call2 = cat.rewrite(context, style(CallArgLayout::MultiLine))?;
+        let prefix2 = format!("{target}.{name}", target = target.trim(), name = name);
+        let code2 = add_after_leading_indent(&prefix2, &call2);
+        if context.str_within_max_width(&code2) {
+            return Some(code2);
+        }
+
+        // Below here, we now decide to put the call on a separate line
+        // to the target:
+
+        // Try put the call all on one line first:
+        let call3 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let prefix3 = format!(".{}", name);
+        let call3 = add_after_leading_indent(&prefix3, &call3);
+        let code3 = format!("{target}\n{call}", target = target, call = call3);
+        if context.str_within_max_width(&code3) {
+            return Some(code3);
+        }
+
+        // Try put the just the lambda over multiple lines:
+        let call4 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::OneLineArgsMultiLineLambda))?;
+        let prefix4 = format!(".{}", name);
+        let call4 = add_after_leading_indent(&prefix4, &call4);
+        let code4 = format!("{target}\n{call}", target = target, call = call4);
+        if context.str_within_max_width(&code4) {
+            return Some(code4);
+        }
+
+        // Fallback, just write the entire call across multiple lines.
+        let call5 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let prefix5 = format!(".{}", self.func_name);
+        let call5 = add_after_leading_indent(&prefix5, &call5);
+        let code5 = format!("{target}\n{call}", target = target, call = call5);
+        if context.str_within_max_width(&code5) {
+            return Some(code5);
+        }
+
+        None
+    }
+
+    fn rewrite_ml_targetone(&self, context: Context) -> Option<String> {
+        let target_can_have_trailing_lambda = false;
+        let target =
+            self.rewrite_target(context, target_can_have_trailing_lambda)?;
+        if !is_one_line(&target) {
+            panic!("expected target to be one line");
+        }
+        if self.has_lambda_last_arg() {
+            panic!("expected self to not have lambda last arg");
+        }
+        let name = &self.func_name;
+
+        let cat = self.call_arg_type();
+        let style = |layout: CallArgLayout| {
+            let irrelevant_lambda_pos = LambdaPos::NotTrailing;
+            CallArgStyle::new(layout, irrelevant_lambda_pos)
+        };
+
+        // Try put the call all on one line first:
+        let call2 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let prefix2 = format!(".{}", name);
+        let call2 = add_after_leading_indent(&prefix2, &call2);
+        let code2 = format!("{target}\n{call}", target = target, call = call2);
+        if context.str_within_max_width(&code2) {
+            return Some(code2);
+        }
+
+        // See if putting all args on multiple lines works:
+        let call1 = cat.rewrite(context, style(CallArgLayout::MultiLine))?;
+        let prefix1 = format!("{target}.{name}", target = target.trim(), name = name);
+        let code1 = add_after_leading_indent(&prefix1, &call1);
+        if context.str_within_max_width(&code1) {
+            return Some(code1);
+        }
+
+        // Below here, we now decide to put the call on a separate line
+        // to the target:
+
+        // Fallback, just write the entire call across multiple lines.
+        let call3 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let prefix3 = format!(".{}", self.func_name);
+        let call3 = add_after_leading_indent(&prefix3, &call3);
+        let code3 = format!("{target}\n{call}", target = target, call = call3);
+        if context.str_within_max_width(&code3) {
+            return Some(code3);
+        }
+
+        None
+    }
+
+
+    fn rewrite_ml_targetmulti_lambda(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+        let target_can_have_trailing_lambda = false;
+        let target =
+            self.rewrite_target(context, target_can_have_trailing_lambda)?;
+        if is_one_line(&target) {
+            panic!("expected target to be multi line");
+        }
+        if !self.has_lambda_last_arg() {
+            panic!("expected self to have lambda last arg");
+        }
+        let name = &self.func_name;
+
+        let cat = self.call_arg_type();
+        let style = |layout: CallArgLayout| {
+            CallArgStyle::new(layout, lambda_pos)
+        };
+
+        // Try put the call all on one line first:
+        let call3 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let prefix3 = format!(".{}", name);
+        let call3 = add_after_leading_indent(&prefix3, &call3);
+        let code3 = format!("{target}\n{call}", target = target, call = call3);
+        if context.str_within_max_width(&code3) {
+            return Some(code3);
+        }
+
+        // Try put the just the lambda over multiple lines:
+        let call4 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::OneLineArgsMultiLineLambda))?;
+        let prefix4 = format!(".{}", name);
+        let call4 = add_after_leading_indent(&prefix4, &call4);
+        let code4 = format!("{target}\n{call}", target = target, call = call4);
+        if context.str_within_max_width(&code4) {
+            return Some(code4);
+        }
+
+        // Fallback, just write the entire call across multiple lines.
+        let call5 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let prefix5 = format!(".{}", self.func_name);
+        let call5 = add_after_leading_indent(&prefix5, &call5);
+        let code5 = format!("{target}\n{call}", target = target, call = call5);
+        if context.str_within_max_width(&code5) {
+            return Some(code5);
+        }
+
+        None
+    }
+
+
+    fn rewrite_ml_targetmulti(&self, context: Context) -> Option<String> {
+        let target_can_have_trailing_lambda = false;
+        let target =
+            self.rewrite_target(context, target_can_have_trailing_lambda)?;
+        if is_one_line(&target) {
+            panic!("expected target to be multi line");
+        }
+        if self.has_lambda_last_arg() {
+            panic!("expected self to not have lambda last arg");
+        }
+        let name = &self.func_name;
+
+        let cat = self.call_arg_type();
+        let style = |layout: CallArgLayout| {
+            let irrelevant_lambda_pos = LambdaPos::NotTrailing;
+            CallArgStyle::new(layout, irrelevant_lambda_pos)
+        };
+
+        // Try put the call all on one line first:
+        let call2 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let prefix2 = format!(".{}", name);
+        let call2 = add_after_leading_indent(&prefix2, &call2);
+        let code2 = format!("{target}\n{call}", target = target, call = call2);
+        if context.str_within_max_width(&code2) {
+            return Some(code2);
+        }
+
+        // Fallback, just write the entire call across multiple lines.
+        let call3 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let prefix3 = format!(".{}", self.func_name);
+        let call3 = add_after_leading_indent(&prefix3, &call3);
+        let code3 = format!("{target}\n{call}", target = target, call = call3);
+        if context.str_within_max_width(&code3) {
+            return Some(code3);
+        }
+
+        None
+    }
+
 
     /// Rewrite the target.
     fn rewrite_target(
@@ -585,7 +739,6 @@ impl DotCall {
 
         let style = CallArgStyle::new(CallArgLayout::OneLine, lambda_pos);
         let call = self.call_arg_type().rewrite(context, style)?;
-        dbg!(&call);
 
         let prefix = format!(
             "{target}.{name}",
@@ -2711,10 +2864,10 @@ end";
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite_inner(nc(1, 20), true).unwrap();
-        assert_eq!(code, " value.func(100, 200)");
+        assert_eq!(code, " value\n     .func(100, 200)");
 
-        // let code = dot_call.rewrite_inner(nc(1, 19), true).unwrap();
-        // assert_eq!(code, " value.func(\n     100,\n     200\n )");
+        let code = dot_call.rewrite_inner(nc(1, 19), true).unwrap();
+        assert_eq!(code, " value.func(\n     100,\n     200\n )");
     }
 
     // =======================================================================
