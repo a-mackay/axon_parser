@@ -2916,6 +2916,62 @@ end";
         assert_eq!(code, " value\n     .func() () => do\n         1234567\n     end");
     }
 
+    #[test]
+    fn dot_call_rewrite_lambda_2() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("func"));
+        let args = vec![ex_lit_num(1), lambda_long()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_inner(nc(1, 23), false).unwrap();
+        assert_eq!(code, " value.func(1, () => do\n     1234567\n end)");
+
+        let code = dot_call.rewrite_inner(nc(1, 22), false).unwrap();
+        assert_eq!(code, " value.func(\n     1,\n     () => do\n         1234567\n     end\n )");
+    }
+
+    #[test]
+    fn dot_call_rewrite_trailing_lambda_2() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("func"));
+        let args = vec![ex_lit_num(1), lambda_long()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_inner(nc(1, 23), true).unwrap();
+        assert_eq!(code, " value.func(1) () => do\n     1234567\n end");
+
+        let code = dot_call.rewrite_inner(nc(1, 22), true).unwrap();
+        assert_eq!(code, " value.func(\n     1\n ) () => do\n     1234567\n end");
+    }
+
+    #[test]
+    fn dot_call_rewrite_lambda_3() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("func"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_long()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_inner(nc(1, 26), false).unwrap();
+        assert_eq!(code, " value.func(1, 2, () => do\n     1234567\n end)");
+
+        let code = dot_call.rewrite_inner(nc(1, 22), false).unwrap();
+        assert_eq!(code, " value.func(\n     1,\n     2,\n     () => do\n         1234567\n     end\n )");
+    }
+
+    #[test]
+    fn dot_call_rewrite_trailing_lambda_3() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("func"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_long()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_inner(nc(1, 26), true).unwrap();
+        assert_eq!(code, " value.func(1, 2) () => do\n     1234567\n end");
+
+        let code = dot_call.rewrite_inner(nc(1, 24), true).unwrap();
+        assert_eq!(code, " value.func(\n     1,\n     2\n ) () => do\n     1234567\n end");
+    }
+
     fn lambda_long() -> Expr {
         let body = ex_lit_num(1234567);
         Expr::Func(Box::new(Func::new(vec![], body)))
