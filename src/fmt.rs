@@ -525,7 +525,7 @@ impl Call {
             |layout: CallArgLayout| CallArgStyle::new(layout, lambda_pos);
 
         // Try put the just the lambda over multiple lines:
-        let call4 = self.call_arg_type().rewrite(
+        let call4 = cat.rewrite(
             context,
             style(CallArgLayout::OneLineArgsMultiLineLambda),
         )?;
@@ -537,8 +537,7 @@ impl Call {
         }
 
         // Fallback, just write the entire call across multiple lines.
-        let call5 = self
-            .call_arg_type()
+        let call5 = cat
             .rewrite(context, style(CallArgLayout::MultiLine))?;
         let prefix5 = target.trim_end();
         let suffix5 = call5.trim_start();
@@ -662,7 +661,7 @@ impl Call {
         context: Context,
         target_can_have_trailing_lambda: bool,
     ) -> Option<String> {
-        let mut target = if target_can_have_trailing_lambda {
+        let target = if target_can_have_trailing_lambda {
             // Rewrite the target in a way that allows trailing lambdas, if
             // they are present.
             expr.rewrite(context)? // TODO check this logic
@@ -683,9 +682,7 @@ impl Call {
                 Expr::Sub(x) => x.0.rewrite(context)?,
                 Expr::Assign(x) => x.rewrite(context)?,
                 Expr::Block(x) => x.rewrite(context)?,
-                Expr::Call(_) => todo!(
-                    "rewrite the target such that there is no trailing lambda"
-                ),
+                Expr::Call(x) => x.rewrite_inner(context, false)?,
                 Expr::Def(x) => x.rewrite(context)?,
                 Expr::Dict(x) => x.rewrite(context)?,
                 Expr::DotCall(x) => x.rewrite_inner(context, false)?,
@@ -1072,9 +1069,7 @@ impl DotCall {
                 Expr::Sub(x) => x.0.rewrite(context)?,
                 Expr::Assign(x) => x.rewrite(context)?,
                 Expr::Block(x) => x.rewrite(context)?,
-                Expr::Call(_) => todo!(
-                    "rewrite the target such that there is no trailing lambda"
-                ),
+                Expr::Call(x) => x.rewrite_inner(context, false)?,
                 Expr::Def(x) => x.rewrite(context)?,
                 Expr::Dict(x) => x.rewrite(context)?,
                 Expr::DotCall(x) => x.rewrite_inner(context, false)?,
@@ -3503,7 +3498,7 @@ end";
 
     //=====================================================================
     #[test]
-    fn call_oneline_lambda() {
+    fn call_oneline_trailing_lambda() {
         let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
         let args = vec![lambda_zero()];
         let call = Call::new(target, args);
@@ -3512,7 +3507,7 @@ end";
     }
 
     #[test]
-    fn call_oneline_arg_lambda() {
+    fn call_oneline_arg_trailing_lambda() {
         let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
         let args = vec![ex_lit_num(1), lambda_zero()];
         let call = Call::new(target, args);
@@ -3521,12 +3516,39 @@ end";
     }
 
     #[test]
-    fn call_oneline_args_lambda() {
+    fn call_oneline_args_trailing_lambda() {
         let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
         let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_zero()];
         let call = Call::new(target, args);
         let code = call.rewrite(c()).unwrap();
         assert_eq!(code, "value(1, 2) () => 100")
+    }
+
+    #[test]
+    fn call_oneline_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value(() => 100)")
+    }
+
+    #[test]
+    fn call_oneline_arg_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value(1, () => 100)")
+    }
+
+    #[test]
+    fn call_oneline_args_lambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_zero()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(c(), false).unwrap();
+        assert_eq!(code, "value(1, 2, () => 100)")
     }
 
     //====================================================================
@@ -3542,5 +3564,61 @@ end";
     someFuncName
 end)(1)";
         assert_eq!(code, expected)
+    }
+
+    //=====================================================================
+
+    #[test]
+    fn call_mltrailinglambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(nc(1, 17)).unwrap();
+        assert_eq!(code, " value() () => do\n     1234567\n end")
+    }
+
+    #[test]
+    fn call_arg_mltrailinglambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(nc(1, 18)).unwrap();
+        assert_eq!(code, " value(1) () => do\n     1234567\n end")
+    }
+
+    #[test]
+    fn call_args_mltrailinglambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite(nc(1, 21)).unwrap();
+        assert_eq!(code, " value(1, 2) () => do\n     1234567\n end")
+    }
+
+    #[test]
+    fn call_mllambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(nc(1, 15), false).unwrap();
+        assert_eq!(code, " value(() => do\n     1234567\n end)")
+    }
+
+    #[test]
+    fn call_arg_mllambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(nc(1, 18), false).unwrap();
+        assert_eq!(code, " value(1, () => do\n     1234567\n end)")
+    }
+
+    #[test]
+    fn call_args_mllambda() {
+        let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_long()];
+        let call = Call::new(target, args);
+        let code = call.rewrite_inner(nc(1, 21), false).unwrap();
+        assert_eq!(code, " value(1, 2, () => do\n     1234567\n end)")
     }
 }
