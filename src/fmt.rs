@@ -443,14 +443,22 @@ impl DotCall {
         let is_target_one_line = is_one_line(&target);
 
         match (is_target_one_line, has_lambda) {
-            (true, true) => self.rewrite_ml_targetone_lambda(context, lambda_pos),
+            (true, true) => {
+                self.rewrite_ml_targetone_lambda(context, lambda_pos)
+            }
             (true, false) => self.rewrite_ml_targetone(context),
-            (false, true) => self.rewrite_ml_targetmulti_lambda(context, lambda_pos),
+            (false, true) => {
+                self.rewrite_ml_targetmulti_lambda(context, lambda_pos)
+            }
             (false, false) => self.rewrite_ml_targetmulti(context),
         }
     }
 
-    fn rewrite_ml_targetone_lambda(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+    fn rewrite_ml_targetone_lambda(
+        &self,
+        context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
         let target_can_have_trailing_lambda = false;
         let target =
             self.rewrite_target(context, target_can_have_trailing_lambda)?;
@@ -463,14 +471,17 @@ impl DotCall {
         let name = &self.func_name;
 
         let cat = self.call_arg_type();
-        let style = |layout: CallArgLayout| {
-            CallArgStyle::new(layout, lambda_pos)
-        };
+        let style =
+            |layout: CallArgLayout| CallArgStyle::new(layout, lambda_pos);
 
         // See if putting only the lambda on multiple lines
         // works:
-        let call1 = cat.rewrite(context, style(CallArgLayout::OneLineArgsMultiLineLambda))?;
-        let prefix1 = format!("{target}.{name}", target = target.trim(), name = name);
+        let call1 = cat.rewrite(
+            context,
+            style(CallArgLayout::OneLineArgsMultiLineLambda),
+        )?;
+        let prefix1 =
+            format!("{target}.{name}", target = target.trim(), name = name);
         let code1 = add_after_leading_indent(&prefix1, &call1);
         if context.str_within_max_width(&code1) {
             return Some(code1);
@@ -478,7 +489,8 @@ impl DotCall {
 
         // Now see if putting all args on multiple lines works:
         let call2 = cat.rewrite(context, style(CallArgLayout::MultiLine))?;
-        let prefix2 = format!("{target}.{name}", target = target.trim(), name = name);
+        let prefix2 =
+            format!("{target}.{name}", target = target.trim(), name = name);
         let code2 = add_after_leading_indent(&prefix2, &call2);
         if context.str_within_max_width(&code2) {
             return Some(code2);
@@ -488,7 +500,10 @@ impl DotCall {
         // to the target:
 
         // Try put the call all on one line first:
-        let call3 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let call3 = cat.rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLine),
+        )?;
         let prefix3 = format!(".{}", name);
         let call3 = add_after_leading_indent(&prefix3, &call3);
         let code3 = format!("{target}\n{call}", target = target, call = call3);
@@ -497,7 +512,10 @@ impl DotCall {
         }
 
         // Try put the just the lambda over multiple lines:
-        let call4 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::OneLineArgsMultiLineLambda))?;
+        let call4 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLineArgsMultiLineLambda),
+        )?;
         let prefix4 = format!(".{}", name);
         let call4 = add_after_leading_indent(&prefix4, &call4);
         let code4 = format!("{target}\n{call}", target = target, call = call4);
@@ -506,7 +524,10 @@ impl DotCall {
         }
 
         // Fallback, just write the entire call across multiple lines.
-        let call5 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let call5 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::MultiLine),
+        )?;
         let prefix5 = format!(".{}", self.func_name);
         let call5 = add_after_leading_indent(&prefix5, &call5);
         let code5 = format!("{target}\n{call}", target = target, call = call5);
@@ -536,7 +557,10 @@ impl DotCall {
         };
 
         // Try put the call all on one line first:
-        let call2 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let call2 = cat.rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLine),
+        )?;
         let prefix2 = format!(".{}", name);
         let call2 = add_after_leading_indent(&prefix2, &call2);
         let code2 = format!("{target}\n{call}", target = target, call = call2);
@@ -546,7 +570,8 @@ impl DotCall {
 
         // See if putting all args on multiple lines works:
         let call1 = cat.rewrite(context, style(CallArgLayout::MultiLine))?;
-        let prefix1 = format!("{target}.{name}", target = target.trim(), name = name);
+        let prefix1 =
+            format!("{target}.{name}", target = target.trim(), name = name);
         let code1 = add_after_leading_indent(&prefix1, &call1);
         if context.str_within_max_width(&code1) {
             return Some(code1);
@@ -556,7 +581,10 @@ impl DotCall {
         // to the target:
 
         // Fallback, just write the entire call across multiple lines.
-        let call3 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let call3 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::MultiLine),
+        )?;
         let prefix3 = format!(".{}", self.func_name);
         let call3 = add_after_leading_indent(&prefix3, &call3);
         let code3 = format!("{target}\n{call}", target = target, call = call3);
@@ -567,8 +595,11 @@ impl DotCall {
         None
     }
 
-
-    fn rewrite_ml_targetmulti_lambda(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+    fn rewrite_ml_targetmulti_lambda(
+        &self,
+        context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
         let target_can_have_trailing_lambda = false;
         let target =
             self.rewrite_target(context, target_can_have_trailing_lambda)?;
@@ -581,12 +612,14 @@ impl DotCall {
         let name = &self.func_name;
 
         let cat = self.call_arg_type();
-        let style = |layout: CallArgLayout| {
-            CallArgStyle::new(layout, lambda_pos)
-        };
+        let style =
+            |layout: CallArgLayout| CallArgStyle::new(layout, lambda_pos);
 
         // Try put the call all on one line first:
-        let call3 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let call3 = cat.rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLine),
+        )?;
         let prefix3 = format!(".{}", name);
         let call3 = add_after_leading_indent(&prefix3, &call3);
         let code3 = format!("{target}\n{call}", target = target, call = call3);
@@ -595,7 +628,10 @@ impl DotCall {
         }
 
         // Try put the just the lambda over multiple lines:
-        let call4 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::OneLineArgsMultiLineLambda))?;
+        let call4 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLineArgsMultiLineLambda),
+        )?;
         let prefix4 = format!(".{}", name);
         let call4 = add_after_leading_indent(&prefix4, &call4);
         let code4 = format!("{target}\n{call}", target = target, call = call4);
@@ -604,7 +640,10 @@ impl DotCall {
         }
 
         // Fallback, just write the entire call across multiple lines.
-        let call5 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let call5 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::MultiLine),
+        )?;
         let prefix5 = format!(".{}", self.func_name);
         let call5 = add_after_leading_indent(&prefix5, &call5);
         let code5 = format!("{target}\n{call}", target = target, call = call5);
@@ -614,7 +653,6 @@ impl DotCall {
 
         None
     }
-
 
     fn rewrite_ml_targetmulti(&self, context: Context) -> Option<String> {
         let target_can_have_trailing_lambda = false;
@@ -635,7 +673,10 @@ impl DotCall {
         };
 
         // Try put the call all on one line first:
-        let call2 = cat.rewrite(context.increase_indent(), style(CallArgLayout::OneLine))?;
+        let call2 = cat.rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::OneLine),
+        )?;
         let prefix2 = format!(".{}", name);
         let call2 = add_after_leading_indent(&prefix2, &call2);
         let code2 = format!("{target}\n{call}", target = target, call = call2);
@@ -644,7 +685,10 @@ impl DotCall {
         }
 
         // Fallback, just write the entire call across multiple lines.
-        let call3 = self.call_arg_type().rewrite(context.increase_indent(), style(CallArgLayout::MultiLine))?;
+        let call3 = self.call_arg_type().rewrite(
+            context.increase_indent(),
+            style(CallArgLayout::MultiLine),
+        )?;
         let prefix3 = format!(".{}", self.func_name);
         let call3 = add_after_leading_indent(&prefix3, &call3);
         let code3 = format!("{target}\n{call}", target = target, call = call3);
@@ -654,7 +698,6 @@ impl DotCall {
 
         None
     }
-
 
     /// Rewrite the target.
     fn rewrite_target(
@@ -875,7 +918,11 @@ impl OnlyArgs {
                     .collect();
                 let args_str = args.join(", ");
                 if is_one_line(&args_str) {
-                    format!("{ind}({args})", ind = context.indent(), args = args_str)
+                    format!(
+                        "{ind}({args})",
+                        ind = context.indent(),
+                        args = args_str
+                    )
                 } else {
                     return None;
                 }
@@ -2857,9 +2904,7 @@ end";
     fn dot_call_rewrite_3() {
         let target = Box::new(ex_id("value"));
         let name = FuncName::TagName(tn("func"));
-        let args = vec![
-            ex_lit_num(100),
-        ];
+        let args = vec![ex_lit_num(100)];
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite_inner(nc(1, 15), true).unwrap();
@@ -2873,10 +2918,7 @@ end";
     fn dot_call_rewrite_4() {
         let target = Box::new(ex_id("value"));
         let name = FuncName::TagName(tn("func"));
-        let args = vec![
-            ex_lit_num(100),
-            ex_lit_num(200),
-        ];
+        let args = vec![ex_lit_num(100), ex_lit_num(200)];
         let dot_call = DotCall::new(name, target, args);
 
         let code = dot_call.rewrite_inner(nc(1, 20), true).unwrap();
@@ -2899,7 +2941,10 @@ end";
         assert_eq!(code, " value.func(() => do\n     1234567\n end)");
 
         let code = dot_call.rewrite_inner(nc(1, 19), false).unwrap();
-        assert_eq!(code, " value.func(\n     () => do\n         1234567\n     end\n )");
+        assert_eq!(
+            code,
+            " value.func(\n     () => do\n         1234567\n     end\n )"
+        );
     }
 
     #[test]
@@ -2913,7 +2958,10 @@ end";
         assert_eq!(code, " value.func() () => do\n     1234567\n end");
 
         let code = dot_call.rewrite_inner(nc(1, 21), true).unwrap();
-        assert_eq!(code, " value\n     .func() () => do\n         1234567\n     end");
+        assert_eq!(
+            code,
+            " value\n     .func() () => do\n         1234567\n     end"
+        );
     }
 
     #[test]
@@ -2941,7 +2989,10 @@ end";
         assert_eq!(code, " value.func(1) () => do\n     1234567\n end");
 
         let code = dot_call.rewrite_inner(nc(1, 22), true).unwrap();
-        assert_eq!(code, " value.func(\n     1\n ) () => do\n     1234567\n end");
+        assert_eq!(
+            code,
+            " value.func(\n     1\n ) () => do\n     1234567\n end"
+        );
     }
 
     #[test]
@@ -2969,7 +3020,10 @@ end";
         assert_eq!(code, " value.func(1, 2) () => do\n     1234567\n end");
 
         let code = dot_call.rewrite_inner(nc(1, 24), true).unwrap();
-        assert_eq!(code, " value.func(\n     1,\n     2\n ) () => do\n     1234567\n end");
+        assert_eq!(
+            code,
+            " value.func(\n     1,\n     2\n ) () => do\n     1234567\n end"
+        );
     }
 
     fn lambda_long() -> Expr {
@@ -2984,7 +3038,8 @@ end";
         let target = Box::new(ex_id("value"));
         let name1 = FuncName::TagName(tn("function1"));
         let args1 = vec![];
-        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+        let dot_call_inner =
+            Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
 
         let name2 = FuncName::TagName(tn("function2"));
         let args2 = vec![];
@@ -2999,7 +3054,8 @@ end";
         let target = Box::new(ex_id("value"));
         let name1 = FuncName::TagName(tn("function1"));
         let args1 = vec![];
-        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+        let dot_call_inner =
+            Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
 
         let name2 = FuncName::TagName(tn("function2"));
         let args2 = vec![];
@@ -3014,7 +3070,8 @@ end";
         let target = Box::new(ex_id("value"));
         let name1 = FuncName::TagName(tn("function1"));
         let args1 = vec![];
-        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+        let dot_call_inner =
+            Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
 
         let name2 = FuncName::TagName(tn("function2"));
         let args2 = vec![];
