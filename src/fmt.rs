@@ -2977,6 +2977,50 @@ end";
         Expr::Func(Box::new(Func::new(vec![], body)))
     }
 
-    // TODO test dot call multi-line trailing lambda
-    // TODO test dot call multi-line
+    // =====================================================================
+
+    #[test]
+    fn dot_call_rewrite_nested_one_line() {
+        let target = Box::new(ex_id("value"));
+        let name1 = FuncName::TagName(tn("function1"));
+        let args1 = vec![];
+        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+
+        let name2 = FuncName::TagName(tn("function2"));
+        let args2 = vec![];
+        let dot_call = DotCall::new(name2, dot_call_inner, args2);
+
+        let code = dot_call.rewrite(c()).unwrap();
+        assert_eq!(code, "value.function1().function2()");
+    }
+
+    #[test]
+    fn dot_call_rewrite_nested_two_lines() {
+        let target = Box::new(ex_id("value"));
+        let name1 = FuncName::TagName(tn("function1"));
+        let args1 = vec![];
+        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+
+        let name2 = FuncName::TagName(tn("function2"));
+        let args2 = vec![];
+        let dot_call = DotCall::new(name2, dot_call_inner, args2);
+
+        let code = dot_call.rewrite(nc(1, 18)).unwrap();
+        assert_eq!(code, " value.function1()\n     .function2()");
+    }
+
+    #[test]
+    fn dot_call_rewrite_nested_chained() {
+        let target = Box::new(ex_id("value"));
+        let name1 = FuncName::TagName(tn("function1"));
+        let args1 = vec![];
+        let dot_call_inner = Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
+
+        let name2 = FuncName::TagName(tn("function2"));
+        let args2 = vec![];
+        let dot_call = DotCall::new(name2, dot_call_inner, args2);
+
+        let code = dot_call.rewrite(nc(1, 17)).unwrap();
+        assert_eq!(code, " value\n     .function1()\n     .function2()");
+    }
 }
