@@ -1,6 +1,5 @@
 pub mod ast;
 pub mod fmt;
-pub use ast::Indent;
 
 use axon_parseast_parser::parse as ap_parse;
 use std::convert::TryInto;
