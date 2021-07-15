@@ -483,7 +483,8 @@ impl DotCall {
             let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
             let regular_args_str =
                 DotCall::rewrite_args_one_line(&regular_args, context)?;
-            let lambda_arg_str = lambda_arg.rewrite(context)?;
+            let lambda_context = Context::new(0, MAX_WIDTH);
+            let lambda_arg_str = lambda_arg.rewrite(lambda_context)?;
 
             if !is_one_line(&lambda_arg_str) {
                 return None;
@@ -531,15 +532,20 @@ impl DotCall {
         //                end)"
         // no lambda "    .funcName(a, b)"
 
-        if use_trailing_lambda && self.can_have_trailing_lambda() {
+        if self.can_have_trailing_lambda() {
             let (regular_args, lambda_arg) = DotCall::split_lambda(&self.args);
+            let lambda_arg = match lambda_arg {
+                Expr::Func(func) => func,
+                _ => panic!("trailing lambda must be a Expr::Func"),
+            };
+            let lambda_arg = lambda_arg.blockify();
             let regular_args_str =
                 DotCall::rewrite_args_one_line(&regular_args, context)?;
             let regular_args_str = regular_args_str.trim(); // Remove indent whitespace.
             let lambda_arg_str = lambda_arg.rewrite(context)?;
 
             let prefix = format!(
-                ".{name}({args})",
+                ".{name}({args}) ",
                 name = self.func_name,
                 args = regular_args_str
             );
@@ -806,6 +812,341 @@ impl DotCall {
             None
         }
     }
+}
+
+impl DotCall {
+    fn call_arg_type(&self) -> CallArgType {
+        let mut args = self.args.clone();
+        if args.is_empty() {
+            CallArgType::NoArgs(NoArgs)
+        } else {
+            let last_index = args.len() - 1;
+            let last_arg = args.remove(last_index);
+            match last_arg {
+                Expr::Func(func) => {
+                    if args.is_empty() {
+                        CallArgType::OnlyLambda(OnlyLambda::new(*func))
+                    } else {
+                        let args = args.into_iter().map(Arg::Expr).collect();
+                        CallArgType::ArgsAndLambda(ArgsAndLambda::new(
+                            args, *func,
+                        ))
+                    }
+                }
+                _ => {
+                    args.push(last_arg);
+                    let all_args =
+                        args.into_iter().map(|a| Arg::Expr(a)).collect();
+                    CallArgType::OnlyArgs(OnlyArgs::new(all_args))
+                }
+            }
+        }
+    }
+}
+
+/// Categorize the types of arguments that are passed to a function call.
+/// This only includes the arguments passed at the end (that is, not
+/// including the target argument for a DotCall).
+enum CallArgType {
+    // e.g. func()
+    NoArgs(NoArgs),
+    // e.g. func(1, 2, ..., 3)
+    OnlyArgs(OnlyArgs),
+    // e.g. func(() => 100)
+    OnlyLambda(OnlyLambda),
+    // e.g. func(1, 2, ... , () => 100)
+    ArgsAndLambda(ArgsAndLambda),
+}
+
+impl CallArgType {
+    /// Rewrite these call arguments, including the necessary parentheses.
+    fn rewrite(&self, context: Context, style: CallArgStyle) -> Option<String> {
+        match self {
+            Self::NoArgs(x) => x.rewrite(context),
+            Self::OnlyArgs(x) => x.rewrite(context, style.layout),
+            Self::OnlyLambda(x) => x.rewrite(context, style),
+            Self::ArgsAndLambda(x) => x.rewrite(context, style),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Arg {
+    Expr(Expr),
+    Placeholder,
+}
+
+impl Rewrite for Arg {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        match self {
+            Self::Expr(expr) => expr.rewrite(context),
+            Self::Placeholder => {
+                let code = format!("{ind}_", ind = context.indent());
+                if context.str_within_max_width(&code) {
+                    Some(code)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+struct NoArgs;
+
+impl NoArgs {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let new_code = format!("{ind}()", ind = context.indent());
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+struct OnlyArgs {
+    args: Vec<Arg>,
+}
+
+impl OnlyArgs {
+    fn new(args: Vec<Arg>) -> Self {
+        Self { args }
+    }
+
+    fn rewrite(
+        &self,
+        context: Context,
+        layout: CallArgLayout,
+    ) -> Option<String> {
+        let new_code = match layout {
+            CallArgLayout::OneLine
+            | CallArgLayout::OneLineArgsMultiLineLambda => {
+                let arg_context = Context::new(0, MAX_WIDTH);
+                let args: Vec<String> = self
+                    .args
+                    .iter()
+                    .map(|arg| {
+                        arg.rewrite(arg_context).expect(
+                            "should be able to rewrite arg within MAX_WIDTH",
+                        )
+                    })
+                    .collect();
+                let args_str = args.join(", ");
+                if is_one_line(&args_str) {
+                    format!("({})", args_str)
+                } else {
+                    return None;
+                }
+            }
+            CallArgLayout::MultiLine => {
+                let arg_context = context.increase_indent();
+                let args: Option<Vec<String>> = self
+                    .args
+                    .iter()
+                    .map(|arg| {
+                        arg.rewrite(arg_context)
+                    })
+                    .collect();
+                let args = args?;
+                let args_str = args.join(",\n");
+                format!("{ind}(\n{args}\n{ind})", ind = context.indent(), args = args_str)
+            }
+        };
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+struct OnlyLambda {
+    lambda: Func,
+}
+
+impl OnlyLambda {
+    fn new(lambda: Func) -> Self {
+        Self { lambda }
+    }
+
+    fn rewrite(&self, context: Context, style: CallArgStyle) -> Option<String> {
+        let style = (style.layout, style.lambda_pos);
+        let func = self.lambda.clone();
+        let new_code = match style {
+            (CallArgLayout::OneLine, LambdaPos::NotTrailing) => {
+                let code = func.rewrite(context)?;
+                if is_one_line(&code) {
+                    let code = add_after_leading_indent("(", &code);
+                    format!("{})", code)
+                } else {
+                    return None;
+                }
+            },
+            (CallArgLayout::OneLine, LambdaPos::Trailing) => {
+                let code = func.rewrite(context)?;
+                if is_one_line(&code) {
+                    add_after_leading_indent("() ", &code)
+                } else {
+                    return None;
+                }
+            },
+            (CallArgLayout::OneLineArgsMultiLineLambda, LambdaPos::NotTrailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+                let code = add_after_leading_indent("(", &code);
+                format!("{})", code)
+            },
+            (CallArgLayout::OneLineArgsMultiLineLambda, LambdaPos::Trailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+                add_after_leading_indent("() ", &code)
+            },
+            (CallArgLayout::MultiLine, LambdaPos::NotTrailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+                let code = add_after_leading_indent("(", &code);
+                format!("{})", code)
+            },
+            (CallArgLayout::MultiLine, LambdaPos::Trailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+                add_after_leading_indent("() ", &code)
+            },
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+struct ArgsAndLambda {
+    args: Vec<Arg>,
+    lambda: Func,
+}
+
+impl ArgsAndLambda {
+    fn new(args: Vec<Arg>, lambda: Func) -> Self {
+        Self { args, lambda }
+    }
+
+    fn strip_parens(s: &str) -> String {
+        // Assumes s is like "(something)"
+        let mut chars = s.chars();
+        chars.next();
+        chars.next_back();
+        chars.as_str().to_owned()
+    }
+
+    fn rewrite(&self, context: Context, style: CallArgStyle) -> Option<String> {
+        let style = (style.layout, style.lambda_pos);
+        // This is safe to do because we know self.args is not empty.
+        let only_args = OnlyArgs::new(self.args.clone());
+        let func = self.lambda.clone();
+        let new_code = match style {
+            (CallArgLayout::OneLine, LambdaPos::NotTrailing) => {
+                let code = func.rewrite(context)?;
+                if is_one_line(&code) {
+                    let args_context = Context::new(0, MAX_WIDTH);
+                    let args = only_args.rewrite(args_context, CallArgLayout::OneLine).expect("could not rewrite args on a single MAX_WIDTH line");
+                    let prefix = format!("({}, ", Self::strip_parens(&args));
+                    let code = add_after_leading_indent(&prefix, &code);
+                    format!("{})", code)
+                } else {
+                    return None;
+                }
+            },
+            (CallArgLayout::OneLine, LambdaPos::Trailing) => {
+                let code = func.rewrite(context)?;
+                if is_one_line(&code) {
+                    let args_context = Context::new(0, MAX_WIDTH);
+                    let args = only_args.rewrite(args_context, CallArgLayout::OneLine).expect("could not rewrite args on a single MAX_WIDTH line");
+                    let prefix = format!("({}) ", Self::strip_parens(&args));
+                    add_after_leading_indent(&prefix, &code)
+                } else {
+                    return None;
+                }
+            },
+            (CallArgLayout::OneLineArgsMultiLineLambda, LambdaPos::NotTrailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+
+                let args_context = Context::new(0, MAX_WIDTH);
+                let args = only_args.rewrite(args_context, CallArgLayout::OneLine).expect("could not rewrite args on a single MAX_WIDTH line");
+                let prefix = format!("({}, ", Self::strip_parens(&args));
+                let code = add_after_leading_indent(&prefix, &code);
+                format!("{})", code)
+            },
+            (CallArgLayout::OneLineArgsMultiLineLambda, LambdaPos::Trailing) => {
+                let func = func.blockify();
+                let code = func.rewrite(context)?;
+
+                let args_context = Context::new(0, MAX_WIDTH);
+                let args = only_args.rewrite(args_context, CallArgLayout::OneLine).expect("could not rewrite args on a single MAX_WIDTH line");
+                let prefix = format!("({}) ", Self::strip_parens(&args));
+                add_after_leading_indent(&prefix, &code)
+            },
+            (CallArgLayout::MultiLine, LambdaPos::NotTrailing) => {
+                let args_context = context.increase_indent();
+
+                let func = func.blockify();
+                let func = func.rewrite(args_context)?;
+
+                let args = self.args.clone();
+                let arg_strs: Option<Vec<String>> = args.iter().map(|arg| {
+                    arg.rewrite(args_context)
+                }).collect();
+                let args_str = arg_strs?.join(",\n");
+
+                let ind = context.indent();
+                format!("{ind}(\n{args},\n{func}\n{ind})", ind = ind, args = args_str, func = func)
+            },
+            (CallArgLayout::MultiLine, LambdaPos::Trailing) => {
+                let func = func.blockify();
+                let func = func.rewrite(context)?;
+
+                let args_context = context.increase_indent();
+                let args = self.args.clone();
+                let arg_strs: Option<Vec<String>> = args.iter().map(|arg| {
+                    arg.rewrite(args_context)
+                }).collect();
+                let args_str = arg_strs?.join(",\n");
+
+                let code = add_after_leading_indent(") ", &func);
+
+                let ind = context.indent();
+                format!("{ind}(\n{args}\n{code}", ind = ind, args = args_str, code = code)
+            },
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CallArgStyle {
+    layout: CallArgLayout,
+    lambda_pos: LambdaPos,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum LambdaPos {
+    Trailing,
+    NotTrailing,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum CallArgLayout {
+    OneLine,
+    OneLineArgsMultiLineLambda,
+    MultiLine,
 }
 
 impl Rewrite for If {
@@ -2452,21 +2793,6 @@ end";
         Expr::Func(Box::new(Func::new(vec![], body)))
     }
 
-    fn lambda_one() -> Expr {
-        let body = ex_lit_num(100);
-        let param = Param::new(tn("a"), None);
-        let args = vec![param];
-        Expr::Func(Box::new(Func::new(args, body)))
-    }
-
-    fn lambda_two() -> Expr {
-        let body = ex_lit_num(100);
-        let param_a = Param::new(tn("a"), None);
-        let param_b = Param::new(tn("b"), None);
-        let args = vec![param_a, param_b];
-        Expr::Func(Box::new(Func::new(args, body)))
-    }
-
     #[test]
     fn dot_call_one_line_no_args_trailing_lambda_zero_works() {
         let target = Box::new(ex_id("value"));
@@ -2479,34 +2805,6 @@ end";
 
         let code = dot_call.rewrite_inner(c(), false).unwrap();
         assert_eq!(code, "value.someFunc(() => 100)");
-    }
-
-    #[test]
-    fn dot_call_one_line_no_args_trailing_lambda_one_works() {
-        let target = Box::new(ex_id("value"));
-        let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![lambda_one()];
-        let dot_call = DotCall::new(name, target, args);
-
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc() a => 100");
-
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(a => 100)");
-    }
-
-    #[test]
-    fn dot_call_one_line_no_args_trailing_lambda_two_works() {
-        let target = Box::new(ex_id("value"));
-        let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![lambda_two()];
-        let dot_call = DotCall::new(name, target, args);
-
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc() (a, b) => 100");
-
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc((a, b) => 100)");
     }
 
     #[test]
@@ -2524,34 +2822,6 @@ end";
     }
 
     #[test]
-    fn dot_call_one_line_one_arg_trailing_lambda_one_works() {
-        let target = Box::new(ex_id("value"));
-        let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![ex_lit_num(1), lambda_one()];
-        let dot_call = DotCall::new(name, target, args);
-
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1) a => 100");
-
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, a => 100)");
-    }
-
-    #[test]
-    fn dot_call_one_line_one_arg_trailing_lambda_two_works() {
-        let target = Box::new(ex_id("value"));
-        let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![ex_lit_num(1), lambda_two()];
-        let dot_call = DotCall::new(name, target, args);
-
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1) (a, b) => 100");
-
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, (a, b) => 100)");
-    }
-
-    #[test]
     fn dot_call_one_line_two_args_trailing_lambda_zero_works() {
         let target = Box::new(ex_id("value"));
         let name = FuncName::TagName(tn("someFunc"));
@@ -2565,33 +2835,167 @@ end";
         assert_eq!(code, "value.someFunc(1, 2, () => 100)");
     }
 
+    // ========================================================================
+
     #[test]
-    fn dot_call_one_line_two_args_trailing_lambda_one_works() {
+    fn dot_call_rewrite_call_one_line_no_args() {
         let target = Box::new(ex_id("value"));
         let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_one()];
+        let args = vec![];
         let dot_call = DotCall::new(name, target, args);
 
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2) a => 100");
-
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2, a => 100)");
+        let code = dot_call.rewrite_call(nc(1, 12), true).unwrap();
+        assert_eq!(code, " .someFunc()");
     }
 
     #[test]
-    fn dot_call_one_line_two_args_trailing_lambda_two_works() {
+    fn dot_call_rewrite_call_one_line_no_args_trailing_lambda() {
         let target = Box::new(ex_id("value"));
         let name = FuncName::TagName(tn("someFunc"));
-        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_two()];
+        let args = vec![lambda_zero()];
         let dot_call = DotCall::new(name, target, args);
 
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2) (a, b) => 100");
+        let code = dot_call.rewrite_call(nc(1, 22), true).unwrap();
+        assert_eq!(code, " .someFunc() () => 100");
 
-        let code = dot_call.rewrite_inner(c(), false).unwrap();
-        assert_eq!(code, "value.someFunc(1, 2, (a, b) => 100)");
+        let code = dot_call.rewrite_call(nc(1, 21), false).unwrap();
+        assert_eq!(code, " .someFunc(() => 100)");
     }
+
+    #[test]
+    fn dot_call_rewrite_call_one_line_one_arg() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1)];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_call(nc(1, 13), true).unwrap();
+        assert_eq!(code, " .someFunc(1)");
+    }
+
+    #[test]
+    fn dot_call_rewrite_call_one_line_one_arg_trailing_lambda() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), lambda_zero()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_call(nc(1, 23), true).unwrap();
+        assert_eq!(code, " .someFunc(1) () => 100");
+
+        let code = dot_call.rewrite_call(nc(1, 24), false).unwrap();
+        assert_eq!(code, " .someFunc(1, () => 100)");
+    }
+
+    #[test]
+    fn dot_call_rewrite_call_one_line_two_args() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2)];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_call(nc(1, 16), true).unwrap();
+        assert_eq!(code, " .someFunc(1, 2)");
+    }
+
+    #[test]
+    fn dot_call_rewrite_call_one_line_two_args_trailing_lambda() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![ex_lit_num(1), ex_lit_num(2), lambda_zero()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call.rewrite_call(nc(1, 26), true).unwrap();
+        assert_eq!(code, " .someFunc(1, 2) () => 100");
+
+        let code = dot_call.rewrite_call(nc(1, 27), false).unwrap();
+        assert_eq!(code, " .someFunc(1, 2, () => 100)");
+    }
+
+    // =======================================================================
+
+    fn lambda_long() -> Expr {
+        let body = ex_lit_num(9999999);
+        Expr::Func(Box::new(Func::new(vec![], body)))
+    }
+
+    #[test]
+    fn dot_call_rewrite_call_one_line_with_multi_line_lambda() {
+        let target = Box::new(ex_id("value"));
+        let name = FuncName::TagName(tn("someFunc"));
+        let args = vec![lambda_long()];
+        let dot_call = DotCall::new(name, target, args);
+
+        let code = dot_call
+            .rewrite_call_one_line_with_multi_line_lambda(nc(1, 21), true)
+            .unwrap();
+        assert_eq!(code, " .someFunc() () => do\n     9999999\n end");
+
+        let code = dot_call
+            .rewrite_call_one_line_with_multi_line_lambda(nc(1, 19), false)
+            .unwrap();
+        assert_eq!(code, " .someFunc(() => do\n     9999999\n end)");
+    }
+
+    // #[test]
+    // fn dot_call_rewrite_call_one_line_one_arg() {
+    //     let target = Box::new(ex_id("value"));
+    //     let name = FuncName::TagName(tn("someFunc"));
+    //     let args = vec![ex_lit_num(1)];
+    //     let dot_call = DotCall::new(name, target, args);
+
+    //     let code = dot_call.rewrite_call(nc(1, 13), true).unwrap();
+    //     assert_eq!(code, " .someFunc(1)");
+    // }
+
+    // #[test]
+    // fn dot_call_rewrite_call_one_line_one_arg_trailing_lambda() {
+    //     let target = Box::new(ex_id("value"));
+    //     let name = FuncName::TagName(tn("someFunc"));
+    //     let args = vec![
+    //         ex_lit_num(1),
+    //         lambda_zero(),
+    //     ];
+    //     let dot_call = DotCall::new(name, target, args);
+
+    //     let code = dot_call.rewrite_call(nc(1, 23), true).unwrap();
+    //     assert_eq!(code, " .someFunc(1) () => 100");
+
+    //     let code = dot_call.rewrite_call(nc(1, 24), false).unwrap();
+    //     assert_eq!(code, " .someFunc(1, () => 100)");
+    // }
+
+    // #[test]
+    // fn dot_call_rewrite_call_one_line_two_args() {
+    //     let target = Box::new(ex_id("value"));
+    //     let name = FuncName::TagName(tn("someFunc"));
+    //     let args = vec![
+    //         ex_lit_num(1),
+    //         ex_lit_num(2),
+    //     ];
+    //     let dot_call = DotCall::new(name, target, args);
+
+    //     let code = dot_call.rewrite_call(nc(1, 16), true).unwrap();
+    //     assert_eq!(code, " .someFunc(1, 2)");
+    // }
+
+    // #[test]
+    // fn dot_call_rewrite_call_one_line_two_args_trailing_lambda() {
+    //     let target = Box::new(ex_id("value"));
+    //     let name = FuncName::TagName(tn("someFunc"));
+    //     let args = vec![
+    //         ex_lit_num(1),
+    //         ex_lit_num(2),
+    //         lambda_zero(),
+    //     ];
+    //     let dot_call = DotCall::new(name, target, args);
+
+    //     let code = dot_call.rewrite_call(nc(1, 26), true).unwrap();
+    //     assert_eq!(code, " .someFunc(1, 2) () => 100");
+
+    //     let code = dot_call.rewrite_call(nc(1, 27), false).unwrap();
+    //     assert_eq!(code, " .someFunc(1, 2, () => 100)");
+    // }
 
     // TODO test dot call multi-line trailing lambda
     // TODO test dot call multi-line
