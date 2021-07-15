@@ -11,7 +11,7 @@ const SPACES: usize = 4;
 const MAX_WIDTH: usize = 1000;
 
 #[derive(Clone, Copy, Debug)]
-struct Context {
+pub(crate) struct Context {
     /// The number of spaces across this code should be.
     indent: usize,
     /// The maximum width allowed for this code (max number of characters allowed per line).
@@ -19,7 +19,7 @@ struct Context {
 }
 
 impl Context {
-    fn new(indent: usize, max_width: usize) -> Self {
+    pub(crate) fn new(indent: usize, max_width: usize) -> Self {
         Self { indent, max_width }
     }
 
@@ -2179,7 +2179,7 @@ impl Rewrite for Throw {
     }
 }
 
-trait Rewrite {
+pub(crate) trait Rewrite {
     fn rewrite(&self, context: Context) -> Option<String>;
 }
 

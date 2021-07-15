@@ -36,6 +36,8 @@ pub enum Error {
         "Could not parse the loosely-typed Axon Val into a strongly-typed AST"
     )]
     AstConversion,
+    #[error("Could not rewrite the AST")]
+    Rewrite,
 }
 
 /// If the axon input represents a function, parse it and return a `Vec<String>`,
@@ -59,12 +61,14 @@ pub enum Error {
 /// assert_eq!(lines[2], "end");
 /// ```
 ///
-pub fn parse_func_to_formatted_lines(
+pub fn parse_func_to_formatted_string(
     axon: &str,
-    indent: &Indent,
-) -> Result<Vec<String>, Error> {
+    max_width: usize,
+) -> Result<String, Error> {
+    use fmt::Rewrite;
+
     let func = parse_func(axon)?;
-    let lines = func.to_lines(indent);
-    let strings = lines.into_iter().map(|line| format!("{}", line)).collect();
-    Ok(strings)
+    let context = fmt::Context::new(0, max_width);
+    let code = func.rewrite(context);
+    code.ok_or_else(|| Error::Rewrite)
 }
