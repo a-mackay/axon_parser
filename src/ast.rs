@@ -917,7 +917,7 @@ impl DotCall {
         }
     }
 
-    pub fn can_have_trailing_lambda(&self) -> bool {
+    pub fn has_lambda_last_arg(&self) -> bool {
         if self.args.len() >= 1 {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, Expr::Func(_))
@@ -1129,7 +1129,7 @@ impl PartialCall {
         }
     }
 
-    pub fn can_have_trailing_lambda(&self) -> bool {
+    pub fn has_lambda_last_arg(&self) -> bool {
         if self.args.len() >= 1 {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, PartialCallArgument::Expr(Expr::Func(_)))
@@ -1358,7 +1358,7 @@ impl Call {
         }
     }
 
-    pub fn can_have_trailing_lambda(&self) -> bool {
+    pub fn has_lambda_last_arg(&self) -> bool {
         if self.args.len() >= 1 {
             let last_arg = self.args.last().unwrap();
             matches!(last_arg, Expr::Func(_))
