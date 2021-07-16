@@ -1,4 +1,8 @@
-use crate::ast::{Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall, Def, Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, FuncName, Id, If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch};
+use crate::ast::{
+    Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall, Def,
+    Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, FuncName, Id,
+    If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
+};
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
@@ -1193,9 +1197,14 @@ impl ChainedDotCall {
         }
     }
 
-    fn rewrite(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+    fn rewrite(
+        &self,
+        context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
         let cat_target = format!("{}.{}", context.indent(), self.func_name);
-        self.call_arg_type().add_call_to_target(cat_target, context, lambda_pos)
+        self.call_arg_type()
+            .add_call_to_target(cat_target, context, lambda_pos)
     }
 }
 
@@ -1264,10 +1273,10 @@ impl CallArgType {
             Self::OnlyArgs(x) => x.add_call_to_target(target, target_context), //x.rewrite(context, style.layout),
             Self::OnlyLambda(x) => {
                 x.add_call_to_target(target, target_context, lambda_pos)
-            },
+            }
             Self::ArgsAndLambda(x) => {
                 x.add_call_to_target(target, target_context, lambda_pos)
-            },
+            }
         }
     }
 }
@@ -2273,11 +2282,14 @@ impl Rewrite for DotCallsChain {
     fn rewrite(&self, context: Context) -> Option<String> {
         let target = self.target.rewrite(context)?;
         let chained_context = context.increase_indent();
-        let chained: Option<Vec<String>> = self.chain.iter().map(|cdc| {
-            cdc.rewrite(chained_context, LambdaPos::NotTrailing)
-        }).collect();
+        let chained: Option<Vec<String>> = self
+            .chain
+            .iter()
+            .map(|cdc| cdc.rewrite(chained_context, LambdaPos::NotTrailing))
+            .collect();
         let mut chained = chained?;
-        let last_chained = self.last.rewrite(chained_context, LambdaPos::Trailing)?;
+        let last_chained =
+            self.last.rewrite(chained_context, LambdaPos::Trailing)?;
         chained.push(last_chained);
 
         let chain = chained.join("\n");
@@ -2325,8 +2337,16 @@ impl Rewrite for DotCallOne {
     fn rewrite(&self, context: Context) -> Option<String> {
         let dot_call = self.0.clone();
         let target = dot_call.target.rewrite(context)?;
-        let cat_target = format!("{target}.{name}", target = target, name = dot_call.func_name);
-        dot_call.call_arg_type().add_call_to_target(cat_target, context, LambdaPos::Trailing)
+        let cat_target = format!(
+            "{target}.{name}",
+            target = target,
+            name = dot_call.func_name
+        );
+        dot_call.call_arg_type().add_call_to_target(
+            cat_target,
+            context,
+            LambdaPos::Trailing,
+        )
     }
 }
 
@@ -2509,9 +2529,7 @@ impl Rewrite for Block {
 
         let mut expr_codes = vec![];
         for expr in exprs {
-            let code =
-                Block::rewrite_and_widen_if_necessary(expr, expr_context); // todo remove
-                                                                           // let code = expr.rewrite(expr_context)?;
+            let code = expr.rewrite(expr_context)?;
             let code = format!("{}\n", code);
             expr_codes.push(ExprAndCode::new(expr.clone(), code));
         }
@@ -2539,21 +2557,6 @@ impl Rewrite for Block {
         } else {
             None
         }
-    }
-}
-
-impl Block {
-    fn rewrite_and_widen_if_necessary(expr: &Expr, context: Context) -> String {
-        let mut max_width = context.max_width();
-        while max_width < MAX_WIDTH {
-            let current_context = Context::new(context.indent, max_width);
-            let code = expr.rewrite(current_context);
-            if let Some(code) = code {
-                return code;
-            }
-            max_width += 10;
-        }
-        panic!("exceeded MAX_WIDTH when trying to rewrite an expression in a block")
     }
 }
 
