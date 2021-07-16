@@ -1515,9 +1515,17 @@ impl Func {
         // Now we try put all params on separate lines:
         let ind = context.indent();
         let param_ind = context.increase_indent().indent();
-        let params_str2 = params.iter().map(|p| format!("{ind}{p}", ind = param_ind, p = p)).collect::<Vec<_>>().join(",\n");
+        let params_str2 = params
+            .iter()
+            .map(|p| format!("{ind}{p}", ind = param_ind, p = p))
+            .collect::<Vec<_>>()
+            .join(",\n");
         // Because of the call to blockify above, we know the body is a Block.
-        let prefix2 = format!("{ind}(\n{params}\n{ind}) => ", ind = ind, params = params_str2);
+        let prefix2 = format!(
+            "{ind}(\n{params}\n{ind}) => ",
+            ind = ind,
+            params = params_str2
+        );
         let body2 = func.body.rewrite(context)?;
         let body2 = body2.trim_start();
         let code2 = format!("{}{}", prefix2, body2);
