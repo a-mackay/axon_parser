@@ -1402,7 +1402,8 @@ impl Rewrite for Func {
         if one_line.is_some() {
             one_line
         } else {
-            self.default_rewrite(context)
+            let widen = false;
+            self.default_rewrite(context, widen)
         }
     }
 }
@@ -1472,9 +1473,14 @@ impl Func {
         }
     }
 
-    fn default_rewrite(&self, context: Context) -> Option<String> {
+    pub(crate) fn default_rewrite(
+        &self,
+        context: Context,
+        widen: bool,
+    ) -> Option<String> {
         let func = self.clone();
         let func = func.blockify();
+        let body = func.block_body().expect("body should be block");
 
         let param_context = Context::new(0, MAX_WIDTH);
         let mut params = vec![];
@@ -1505,10 +1511,14 @@ impl Func {
         let params_str1 = params.join(", ");
         // Because of the call to blockify above, we know the body is a Block.
         let prefix1 = format!("({}) => ", params_str1);
-        let body1 = func.body.rewrite(context)?;
+        let body1 = if widen {
+            body.rewrite_and_widen_if_necessary(context)?
+        } else {
+            body.rewrite(context)?
+        };
         let code1 = add_after_leading_indent(&prefix1, &body1);
 
-        if context.str_within_max_width(&code1) {
+        if widen || context.str_within_max_width(&code1) {
             return Some(code1);
         }
 
@@ -1526,11 +1536,15 @@ impl Func {
             ind = ind,
             params = params_str2
         );
-        let body2 = func.body.rewrite(context)?;
+        let body2 = if widen {
+            body.rewrite_and_widen_if_necessary(context)?
+        } else {
+            body.rewrite(context)?
+        };
         let body2 = body2.trim_start();
         let code2 = format!("{}{}", prefix2, body2);
 
-        if context.str_within_max_width(&code2) {
+        if widen || context.str_within_max_width(&code2) {
             return Some(code2);
         }
 
@@ -1626,6 +1640,61 @@ impl Rewrite for Block {
         } else {
             None
         }
+    }
+}
+
+impl Block {
+    /// This duplicates rewrite, but has differences noted by comments
+    fn rewrite_and_widen_if_necessary(
+        &self,
+        context: Context,
+    ) -> Option<String> {
+        let exprs: &[Expr] = &self.exprs;
+        let ind = context.indent();
+        let expr_context = context.increase_indent();
+
+        let mut expr_codes = vec![];
+        for expr in exprs {
+            let code = Block::rewrite_and_widen_expr(expr, expr_context); // difference
+            let code = format!("{}\n", code);
+            expr_codes.push(ExprAndCode::new(expr.clone(), code));
+        }
+
+        let mut exprs_str: Vec<String> = vec![];
+        let mut iter = expr_codes.into_iter().peekable();
+        while let Some(expr_code) = iter.next() {
+            let expr = expr_code.expr;
+            let code = expr_code.code;
+            let next_expr = iter.peek().map(|ec| &ec.expr);
+            exprs_str.push(code);
+
+            if needs_newline(&expr, next_expr) {
+                exprs_str.push("\n".to_owned());
+            }
+        }
+
+        let exprs_str = exprs_str.join("");
+
+        let new_code =
+            format!("{ind}do\n{exprs}{ind}end", ind = ind, exprs = exprs_str);
+
+        // difference:
+        // if context.str_within_max_width(&new_code) {
+        Some(new_code)
+        // } else {
+        //     None
+        // }
+    }
+    fn rewrite_and_widen_expr(expr: &Expr, initial_context: Context) -> String {
+        let mut width = initial_context.max_width();
+        while width < MAX_WIDTH {
+            let context = Context::new(initial_context.indent, width);
+            if let Some(code) = expr.rewrite(context) {
+                return code;
+            }
+            width += 5;
+        }
+        panic!("could not write an expression after widening to MAX_WIDTH");
     }
 }
 

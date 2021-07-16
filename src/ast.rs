@@ -883,6 +883,13 @@ impl Func {
         self.body = self.body.blockify();
         self
     }
+
+    pub(crate) fn block_body(&self) -> Option<Block> {
+        match &self.body {
+            Expr::Block(block) => Some(block.clone()),
+            _ => None,
+        }
+    }
 }
 
 impl TryFrom<&Val> for Func {
