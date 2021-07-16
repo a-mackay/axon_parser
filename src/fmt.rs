@@ -4,6 +4,11 @@ use crate::ast::{
     Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
 };
 
+// TODO exponential numbers
+// TODO really long strings (use """ in Axon?)
+// TODO format .get() as []
+// TODO defcomp
+
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
 /// An arbitrary big maximum width, supposed to be bigger than the width
@@ -570,7 +575,7 @@ impl CallArgType {
     ) -> Option<String> {
         match self {
             Self::NoArgs(x) => x.add_call_to_target(target, target_context),
-            Self::OnlyArgs(x) => x.add_call_to_target(target, target_context), //x.rewrite(context, style.layout),
+            Self::OnlyArgs(x) => x.add_call_to_target(target, target_context),
             Self::OnlyLambda(x) => {
                 x.add_call_to_target(target, target_context, lambda_pos)
             }
