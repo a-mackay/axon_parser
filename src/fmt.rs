@@ -584,14 +584,14 @@ impl CallArgType {
 #[derive(Clone, Debug, PartialEq)]
 enum Arg {
     Expr(Expr),
-    Placeholder,
+    _Placeholder, // TODO
 }
 
 impl Rewrite for Arg {
     fn rewrite(&self, context: Context) -> Option<String> {
         match self {
             Self::Expr(expr) => expr.rewrite(context),
-            Self::Placeholder => {
+            Self::_Placeholder => {
                 let code = format!("{ind}_", ind = context.indent());
                 if context.str_within_max_width(&code) {
                     Some(code)

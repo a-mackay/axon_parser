@@ -662,7 +662,7 @@ pub enum PartialCallArgument {
 }
 
 impl PartialCallArgument {
-    fn is_func(&self) -> bool {
+    fn _is_func(&self) -> bool { // TODO
         match self {
             Self::Expr(expr) => expr.is_func(),
             Self::Placeholder => false,
