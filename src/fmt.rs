@@ -1501,17 +1501,32 @@ impl Func {
             params.push(param_code);
         }
 
-        let params_str = params.join(", ");
+        // Firstly we try to put all params on one line:
+        let params_str1 = params.join(", ");
         // Because of the call to blockify above, we know the body is a Block.
-        let prefix = format!("({}) => ", params_str);
-        let body = func.body.rewrite(context)?;
-        let new_code = add_after_leading_indent(&prefix, &body);
+        let prefix1 = format!("({}) => ", params_str1);
+        let body1 = func.body.rewrite(context)?;
+        let code1 = add_after_leading_indent(&prefix1, &body1);
 
-        // TODO dont do this We deliberately do not check new_code fits within the given
-        // width because we know the body already does, and I want the
-        // function parameters to all be on a single line regardless of
-        // desired width.
-        Some(new_code)
+        if context.str_within_max_width(&code1) {
+            return Some(code1);
+        }
+
+        // Now we try put all params on separate lines:
+        let ind = context.indent();
+        let param_ind = context.increase_indent().indent();
+        let params_str2 = params.iter().map(|p| format!("{ind}{p}", ind = param_ind, p = p)).collect::<Vec<_>>().join(",\n");
+        // Because of the call to blockify above, we know the body is a Block.
+        let prefix2 = format!("{ind}(\n{params}\n{ind}) => ", ind = ind, params = params_str2);
+        let body2 = func.body.rewrite(context)?;
+        let body2 = body2.trim_start();
+        let code2 = format!("{}{}", prefix2, body2);
+
+        if context.str_within_max_width(&code2) {
+            return Some(code2);
+        }
+
+        None
     }
 }
 

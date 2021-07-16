@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn it_works() {
         let code = include_str!("./test0.txt");
-        let x = crate::parse_func_to_formatted_string(code, 108).unwrap(); // todo fails at 107
+        let x = crate::parse_func_to_formatted_string(code, 102).unwrap(); // todo fails at 107
         println!("{}", x);
     }
 }
