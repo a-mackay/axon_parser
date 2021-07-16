@@ -1,8 +1,4 @@
-use crate::ast::{
-    Assign, Associativity, BinOp, Block, Call, CallTarget, Def, Dict, DictVal,
-    DotCall, Expr, FlatIf, Func, FuncName, Id, If, List, Lit, Neg, Not, Range,
-    Return, Throw, TrapCall, TryCatch,
-};
+use crate::ast::{Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall, Def, Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, FuncName, Id, If, List, Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch};
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
@@ -708,10 +704,13 @@ impl Call {
 
 impl Rewrite for DotCall {
     fn rewrite(&self, context: Context) -> Option<String> {
-        // By default, allow trailing lambdas.
-        let use_trailing_lambda = true;
-        self.rewrite_inner(context, use_trailing_lambda)
+        self.clone().into_sub().rewrite(context)
     }
+    // fn rewrite(&self, context: Context) -> Option<String> {
+    //     // By default, allow trailing lambdas.
+    //     let use_trailing_lambda = true;
+    //     self.rewrite_inner(context, use_trailing_lambda)
+    // }
 }
 
 impl DotCall {
@@ -1166,6 +1165,40 @@ impl Call {
     }
 }
 
+impl ChainedDotCall {
+    fn call_arg_type(&self) -> CallArgType {
+        let mut args = self.args.clone();
+        if args.is_empty() {
+            CallArgType::NoArgs(NoArgs)
+        } else {
+            let last_index = args.len() - 1;
+            let last_arg = args.remove(last_index);
+            match last_arg {
+                Expr::Func(func) => {
+                    if args.is_empty() {
+                        CallArgType::OnlyLambda(OnlyLambda::new(*func))
+                    } else {
+                        let args = args.into_iter().map(Arg::Expr).collect();
+                        CallArgType::ArgsAndLambda(ArgsAndLambda::new(
+                            args, *func,
+                        ))
+                    }
+                }
+                _ => {
+                    args.push(last_arg);
+                    let all_args = args.into_iter().map(Arg::Expr).collect();
+                    CallArgType::OnlyArgs(OnlyArgs::new(all_args))
+                }
+            }
+        }
+    }
+
+    fn rewrite(&self, context: Context, lambda_pos: LambdaPos) -> Option<String> {
+        let cat_target = format!("{}.{}", context.indent(), self.func_name);
+        self.call_arg_type().add_call_to_target(cat_target, context, lambda_pos)
+    }
+}
+
 impl DotCall {
     fn call_arg_type(&self) -> CallArgType {
         let mut args = self.args.clone();
@@ -1219,6 +1252,24 @@ impl CallArgType {
             Self::ArgsAndLambda(x) => x.rewrite(context, style),
         }
     }
+
+    fn add_call_to_target(
+        &self,
+        target: String,
+        target_context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
+        match self {
+            Self::NoArgs(x) => x.add_call_to_target(target, target_context),
+            Self::OnlyArgs(x) => x.add_call_to_target(target, target_context), //x.rewrite(context, style.layout),
+            Self::OnlyLambda(x) => {
+                x.add_call_to_target(target, target_context, lambda_pos)
+            },
+            Self::ArgsAndLambda(x) => {
+                x.add_call_to_target(target, target_context, lambda_pos)
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1250,6 +1301,20 @@ impl NoArgs {
         let new_code = format!("{ind}()", ind = context.indent());
         if context.str_within_max_width(&new_code) {
             Some(new_code)
+        } else {
+            None
+        }
+    }
+
+    fn add_call_to_target(
+        &self,
+        target: String,
+        target_context: Context,
+    ) -> Option<String> {
+        // <something>()
+        let code = format!("{}()", target);
+        if target_context.str_within_max_width(&code) {
+            Some(code)
         } else {
             None
         }
@@ -1315,6 +1380,55 @@ impl OnlyArgs {
         } else {
             None
         }
+    }
+
+    fn add_call_to_target(
+        &self,
+        target: String,
+        target_context: Context,
+    ) -> Option<String> {
+        // Try put the call on a single line:
+        // <something>(a, b)
+        let ol_arg_context = Context::new(0, MAX_WIDTH);
+        let ol_args = self
+            .args
+            .iter()
+            .map(|arg| {
+                arg.rewrite(ol_arg_context)
+                    .expect("should be able to rewrite arg within MAX_WIDTH")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if is_one_line(&ol_args) {
+            let code1 = format!("{}({})", target, ol_args);
+            if target_context.str_within_max_width(&code1) {
+                return Some(code1);
+            }
+        }
+
+        // Otherwise, put the call over multiple lines:
+        // <something>(
+        //    a,
+        // )
+        let ml_arg_context = target_context.increase_indent();
+        let ml_args: Option<Vec<String>> = self
+            .args
+            .iter()
+            .map(|arg| arg.rewrite(ml_arg_context))
+            .collect();
+        let ml_args = ml_args?;
+        let code2 = format!(
+            "{target}(\n{args}\n{target_indent})",
+            target = target,
+            args = ml_args.join(",\n"),
+            target_indent = target_context.indent()
+        );
+        if target_context.str_within_max_width(&code2) {
+            return Some(code2);
+        }
+
+        None
     }
 }
 
@@ -1382,6 +1496,84 @@ impl OnlyLambda {
             Some(new_code)
         } else {
             None
+        }
+    }
+
+    fn add_call_to_target(
+        &self,
+        target: String,
+        target_context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
+        match lambda_pos {
+            LambdaPos::Trailing => {
+                // Try put the lambda on one line first:
+                // <something>() () => 0
+                let ol_lambda_context = Context::new(0, MAX_WIDTH);
+                let lambda1 = self.lambda.rewrite(ol_lambda_context).expect(
+                    "should be able to rewrite lambda within MAX_WIDTH",
+                );
+                if is_one_line(&lambda1) {
+                    let code1 = format!(
+                        "{target} {lambda}",
+                        target = target,
+                        lambda = lambda1
+                    );
+                    if target_context.str_within_max_width(&code1) {
+                        return Some(code1);
+                    }
+                }
+
+                // <something>() () => do
+                //     ...
+                // end
+                let lambda2 = self.lambda.rewrite(target_context)?;
+                let lambda2 = lambda2.trim_start();
+                let code2 = format!(
+                    "{target} {lambda}",
+                    target = target,
+                    lambda = lambda2
+                );
+                if target_context.str_within_max_width(&code2) {
+                    return Some(code2);
+                }
+
+                None
+            }
+            LambdaPos::NotTrailing => {
+                // Try put the lambda on one line first:
+                // <something>(() => 0)
+                let ol_lambda_context = Context::new(0, MAX_WIDTH);
+                let lambda1 = self.lambda.rewrite(ol_lambda_context).expect(
+                    "should be able to rewrite lambda within MAX_WIDTH",
+                );
+                if is_one_line(&lambda1) {
+                    let code1 = format!(
+                        "{target}({lambda})",
+                        target = target,
+                        lambda = lambda1
+                    );
+                    if target_context.str_within_max_width(&code1) {
+                        return Some(code1);
+                    }
+                }
+
+                // <something>(() => do
+                //     ...
+                // end)
+                let lambda2 = self.lambda.rewrite(target_context)?;
+                let lambda2 = lambda2.trim_start();
+                let code2 = format!(
+                    "{target}({lambda})",
+                    target = target,
+                    lambda = lambda2
+                );
+                if target_context.str_within_max_width(&code2) {
+                    return Some(code2);
+                }
+
+                None
+            }
         }
     }
 }
@@ -1520,6 +1712,220 @@ impl ArgsAndLambda {
         } else {
             None
         }
+    }
+
+    fn add_call_to_target(
+        &self,
+        target: String,
+        target_context: Context,
+        lambda_pos: LambdaPos,
+    ) -> Option<String> {
+        match lambda_pos {
+            LambdaPos::Trailing => {
+                self.add_call_to_target_trailing(target, target_context)
+            }
+            LambdaPos::NotTrailing => {
+                self.add_call_to_target_not_trailing(target, target_context)
+            }
+        }
+    }
+
+    fn add_call_to_target_trailing(
+        &self,
+        target: String,
+        target_context: Context,
+    ) -> Option<String> {
+        let ol_context = Context::new(0, MAX_WIDTH);
+        let ol_args: Vec<String> = self
+            .args
+            .iter()
+            .map(|a| {
+                a.rewrite(ol_context)
+                    .expect("expected to rewrite arg within MAX_WIDTH")
+            })
+            .collect();
+        let ol_args = ol_args.join(", ");
+        let ol_lambda = self
+            .lambda
+            .rewrite(ol_context)
+            .expect("expect to rewrite lambda within MAX_WIDTH");
+        let ol_args = if is_one_line(&ol_args) {
+            Some(ol_args)
+        } else {
+            None
+        };
+        let ol_lambda = if is_one_line(&ol_lambda) {
+            Some(ol_lambda)
+        } else {
+            None
+        };
+
+        // =====================================================================
+
+        // Try put args and lambda on one line:
+        if let (Some(ol_args), Some(ol_lambda)) = (&ol_args, &ol_lambda) {
+            let code1 = format!(
+                "{target}({args}) {lambda}",
+                target = target,
+                args = ol_args,
+                lambda = ol_lambda
+            );
+            if target_context.str_within_max_width(&code1) {
+                return Some(code1);
+            }
+        }
+
+        // <something>(a, b) () => do
+        //     ...
+        // end
+        // or
+        // <something>(
+        //     a
+        // ) () => do
+        //     ...
+        // end
+        let ml_lambda = self.lambda.clone().blockify().rewrite(target_context);
+        let ml_lambda = ml_lambda.map(|lambda| lambda.trim_start().to_owned());
+
+        // One line args, multi line lambda:
+        if let (Some(ol_args), Some(ml_lambda)) = (&ol_args, &ml_lambda) {
+            let code2 = format!(
+                "{target}({args}) {lambda}",
+                target = target,
+                args = ol_args,
+                lambda = ml_lambda
+            );
+            if target_context.str_within_max_width(&code2) {
+                return Some(code2);
+            }
+        }
+
+        let ml_args: Option<Vec<String>> = self
+            .args
+            .iter()
+            .map(|a| a.rewrite(target_context.increase_indent()))
+            .collect();
+        let ml_args = ml_args?.join(",\n");
+
+        // multi line args, one line lambda
+        if let Some(ol_lambda) = &ol_lambda {
+            let target_ind = target_context.indent();
+            let code3 = format!(
+                "{target}(\n{args}\n{target_ind}) {lambda}",
+                target = target,
+                args = ml_args,
+                target_ind = target_ind,
+                lambda = ol_lambda
+            );
+            if target_context.str_within_max_width(&code3) {
+                return Some(code3);
+            }
+        }
+
+        // multi line args, multi line lambda
+        if let Some(ml_lambda) = &ml_lambda {
+            let target_ind = target_context.indent();
+            let code4 = format!(
+                "{target}(\n{args}\n{target_ind}) {lambda}",
+                target = target,
+                args = ml_args,
+                target_ind = target_ind,
+                lambda = ml_lambda
+            );
+            if target_context.str_within_max_width(&code4) {
+                return Some(code4);
+            }
+        }
+
+        None
+    }
+
+    fn add_call_to_target_not_trailing(
+        &self,
+        target: String,
+        target_context: Context,
+    ) -> Option<String> {
+        let ol_context = Context::new(0, MAX_WIDTH);
+        let ol_args: Vec<String> = self
+            .args
+            .iter()
+            .map(|a| {
+                a.rewrite(ol_context)
+                    .expect("expected to rewrite arg within MAX_WIDTH")
+            })
+            .collect();
+        let ol_args = ol_args.join(", ");
+        let ol_lambda = self
+            .lambda
+            .rewrite(ol_context)
+            .expect("expect to rewrite lambda within MAX_WIDTH");
+        let ol_args = if is_one_line(&ol_args) {
+            Some(ol_args)
+        } else {
+            None
+        };
+        let ol_lambda = if is_one_line(&ol_lambda) {
+            Some(ol_lambda)
+        } else {
+            None
+        };
+
+        // =====================================================================
+
+        // Try put args and lambda on one line:
+        if let (Some(ol_args), Some(ol_lambda)) = (&ol_args, &ol_lambda) {
+            let code1 = format!(
+                "{target}({args}, {lambda})",
+                target = target,
+                args = ol_args,
+                lambda = ol_lambda
+            );
+            if target_context.str_within_max_width(&code1) {
+                return Some(code1);
+            }
+        }
+
+        // <something>(a, b, () => do
+        //     ...
+        // end)
+        let ml_lambda = self.lambda.clone().blockify().rewrite(target_context);
+        let ml_lambda = ml_lambda.map(|lambda| lambda.trim_start().to_owned());
+        // One line args, multi line lambda:
+        if let (Some(ol_args), Some(ml_lambda)) = (&ol_args, &ml_lambda) {
+            let code2 = format!(
+                "{target}({args}, {lambda})",
+                target = target,
+                args = ol_args,
+                lambda = ml_lambda
+            );
+            if target_context.str_within_max_width(&code2) {
+                return Some(code2);
+            }
+        }
+
+        // treat lambda as a normal argument and put everything on multiple
+        // lines:
+        let mut all_args = self.args.clone();
+        all_args.push(Arg::Expr(Expr::Func(Box::new(self.lambda.clone()))));
+
+        let all_args: Option<Vec<String>> = self
+            .args
+            .iter()
+            .map(|a| a.rewrite(target_context.increase_indent()))
+            .collect();
+        let all_args = all_args?.join(",\n");
+        let target_ind = target_context.indent();
+        let code3 = format!(
+            "{target}(\n{all_args}\n{target_ind})",
+            target = target,
+            all_args = all_args,
+            target_ind = target_ind
+        );
+        if target_context.str_within_max_width(&code3) {
+            return Some(code3);
+        }
+
+        None
     }
 }
 
@@ -1863,6 +2269,67 @@ impl TryCatch {
     }
 }
 
+impl Rewrite for DotCallsChain {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let target = self.target.rewrite(context)?;
+        let chained_context = context.increase_indent();
+        let chained: Option<Vec<String>> = self.chain.iter().map(|cdc| {
+            cdc.rewrite(chained_context, LambdaPos::NotTrailing)
+        }).collect();
+        let mut chained = chained?;
+        let last_chained = self.last.rewrite(chained_context, LambdaPos::Trailing)?;
+        chained.push(last_chained);
+
+        let chain = chained.join("\n");
+
+        let code = format!("{target}\n{chain}", target = target, chain = chain);
+        if context.str_within_max_width(&code) {
+            Some(code)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum SubDotCall {
+    One(DotCallOne),
+    Chain(DotCallsChain),
+}
+
+impl Rewrite for SubDotCall {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        match self {
+            Self::One(one) => one.rewrite(context),
+            Self::Chain(chain) => chain.rewrite(context),
+        }
+    }
+}
+
+impl DotCall {
+    fn into_sub(self) -> SubDotCall {
+        if let Some(chain) = self.to_chain() {
+            SubDotCall::Chain(chain)
+        } else {
+            SubDotCall::One(DotCallOne(self))
+        }
+    }
+}
+
+/// A non-chained dot call, like "<not a dotcall>.someFunc()".
+/// The target is not a DotCall.
+#[derive(Clone, Debug, PartialEq)]
+struct DotCallOne(DotCall);
+
+impl Rewrite for DotCallOne {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let dot_call = self.0.clone();
+        let target = dot_call.target.rewrite(context)?;
+        let cat_target = format!("{target}.{name}", target = target, name = dot_call.func_name);
+        dot_call.call_arg_type().add_call_to_target(cat_target, context, LambdaPos::Trailing)
+    }
+}
+
 impl Rewrite for Func {
     fn rewrite(&self, context: Context) -> Option<String> {
         let one_line = self.rewrite_one_line(context);
@@ -2044,7 +2511,7 @@ impl Rewrite for Block {
         for expr in exprs {
             let code =
                 Block::rewrite_and_widen_if_necessary(expr, expr_context); // todo remove
-            // let code = expr.rewrite(expr_context)?;
+                                                                           // let code = expr.rewrite(expr_context)?;
             let code = format!("{}\n", code);
             expr_codes.push(ExprAndCode::new(expr.clone(), code));
         }

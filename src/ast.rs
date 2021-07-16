@@ -473,7 +473,10 @@ impl TryFrom<&Val> for TrapCall {
 pub(crate) struct DotCallsChain {
     /// The first argument (at the start of the chain). This cannot be a DotCall.
     pub(crate) target: Expr,
+    /// The calls in the middle of the chain. Will be at least one element.
     pub(crate) chain: Vec<ChainedDotCall>,
+    /// The final call in the chain.
+    pub(crate) last: ChainedDotCall,
 }
 
 /// Only used to build a DotCallsChain
@@ -488,13 +491,18 @@ impl BuildDotCallsChain {
         if self.chain.len() < 2 {
             // If there is 1 element in the chain, this is just a regular
             // DotCall on a non-DotCall target.
-            return None;
+            None
+        } else {
+            // There are at least 2 elements in the chain.
+            let mut new_chain = self.chain.clone();
+            let last_index = new_chain.len() - 1;
+            let last = new_chain.remove(last_index);
+            Some(DotCallsChain {
+                target: self.target?,
+                chain: new_chain,
+                last,
+            })
         }
-
-        Some(DotCallsChain {
-            target: self.target?,
-            chain: self.chain,
-        })
     }
 
     fn new() -> Self {
@@ -664,7 +672,7 @@ impl PartialCallArgument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialCall {
-    pub func_name: FuncName,
+    pub func_name: FuncName, // change to CallArgument because exprs can be the target
     pub args: Vec<PartialCallArgument>,
 }
 
