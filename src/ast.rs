@@ -5,34 +5,6 @@ use raystack_core::{Number, Qname, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
-// TODO later:
-// defcomps don't seem to work in parseAst
-
-// 1 - (2 + 3)
-// Min (1) (2 + 3)
-// 5    5
-
-// precedence (1 is highest)
-
-// do i need parenthesis?
-// 1. look at parent precedence
-// 2. if parent is lower  precedence: no
-//    if parent is higher precedence: yes
-//    if parent is same precedence:
-//          if i am on same side as parent associativity: no
-//          if i am on wrong side of parent associativity: yes
-
-// does my child need parenthesis?
-// 1. if child is higher, no
-// 2. if child is lower, yes
-// 3. if child is equal:
-//    if i have no associativity, yes
-//    if child is on the same side as my associativity, no
-//    if child is on the wrong side as my associativity, yes
-
-//"(if (true) utilsAssert else parseRef).params(if (true) true else false)"
-//left if requires parens, right if does not
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Associativity {
     Left,
@@ -659,16 +631,6 @@ impl std::fmt::Display for FuncName {
 pub enum PartialCallArgument {
     Expr(Expr),
     Placeholder,
-}
-
-impl PartialCallArgument {
-    fn _is_func(&self) -> bool {
-        // TODO
-        match self {
-            Self::Expr(expr) => expr.is_func(),
-            Self::Placeholder => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
