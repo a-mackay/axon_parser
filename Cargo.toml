@@ -1,6 +1,6 @@
 [package]
 name = "axon_parser"
-version = "0.5.4"
+version = "0.6.0"
 authors = ["A Mackay <opensauceburner@outlook.com>"]
 edition = "2018"
 homepage = "https://github.com/a-mackay/axon_parser"
@@ -13,6 +13,6 @@ license = "MIT"
 
 [dependencies]
 chrono = "0.4"
-axon_parseast_parser = "0.6"
-raystack_core = "0.3"
-thiserror = "1.0"
+axon_parseast_parser = "0.7"
+raystack_core = "0.4"
+thiserror = "1"
