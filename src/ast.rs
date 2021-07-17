@@ -673,13 +673,13 @@ impl PartialCallArgument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialCall {
-    pub func_name: FuncName, // change to CallArgument because exprs can be the target
+    pub target: CallTarget,
     pub args: Vec<PartialCallArgument>,
 }
 
 impl PartialCall {
-    pub fn new(func_name: FuncName, args: Vec<PartialCallArgument>) -> Self {
-        Self { func_name, args }
+    pub fn new(target: CallTarget, args: Vec<PartialCallArgument>) -> Self {
+        Self { target, args }
     }
 
     pub fn has_lambda_last_arg(&self) -> bool {
@@ -701,11 +701,6 @@ impl TryFrom<&Val> for PartialCall {
             .expect("partialCall should have 'target' tag");
         match target {
             Val::Dict(target_hash_map) => {
-                let func_name = get_literal_str(target_hash_map, "name")
-                    .expect(
-                        "partialCall 'target' should have 'name' string tag",
-                    );
-                let func_name = func_name.to_owned();
                 let args = get_vals(hash_map, "args")
                     .expect("partialCall should have 'args' tag");
 
@@ -725,12 +720,32 @@ impl TryFrom<&Val> for PartialCall {
                     }
                 }
 
-                if let Some(func_name) = TagName::new(func_name.clone()) {
-                    Ok(Self::new(FuncName::TagName(func_name), exprs))
+                if let Some(func_name) =
+                    get_literal_str(target_hash_map, "name")
+                {
+                    let func_name = func_name.to_owned();
+
+                    if let Some(func_name) = TagName::new(func_name.clone()) {
+                        let func_name = FuncName::TagName(func_name);
+                        let call_target = CallTarget::FuncName(func_name);
+                        Ok(Self::new(call_target, exprs))
+                    } else {
+                        // We assume it's a qname:
+                        let qname = Qname::new(func_name);
+                        let func_name = FuncName::Qname(qname);
+                        let call_target = CallTarget::FuncName(func_name);
+                        Ok(Self::new(call_target, exprs))
+                    }
                 } else {
-                    // We assume it's a qname:
-                    let qname = Qname::new(func_name);
-                    Ok(Self::new(FuncName::Qname(qname), exprs))
+                    let target_expr: Expr = target.try_into().unwrap_or_else(|_| {
+                        panic!(
+                            "partialCall target could not be parsed as an Expr: {:?}",
+                            target
+                        )
+                    });
+                    let call_target = CallTarget::Expr(Box::new(target_expr));
+
+                    Ok(Self::new(call_target, exprs))
                 }
             }
             _ => panic!("expected partialCall 'target' to be a Dict"),
@@ -2109,9 +2124,10 @@ mod tests {
     fn val_to_partial_call_works() {
         let val = &ap_parse(r#"{type:"partialCall", target:{type:"var", name:"utilsAssert"}, args:[null, {type:"literal", val:1}]}"#).unwrap();
         let func_name = FuncName::TagName(tn("utilsAssert"));
+        let target = CallTarget::FuncName(func_name);
         let null = PartialCallArgument::Placeholder;
         let arg2 = PartialCallArgument::Expr(Expr::Lit(lit_num(1.0)));
-        let expected = PartialCall::new(func_name, vec![null, arg2]);
+        let expected = PartialCall::new(target, vec![null, arg2]);
 
         let partial_call: PartialCall = val.try_into().unwrap();
         assert_eq!(partial_call, expected);

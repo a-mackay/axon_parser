@@ -1,13 +1,15 @@
 use crate::ast::{
     Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall, Def,
     Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, Id, If, List,
-    Lit, Neg, Not, Range, Return, Throw, TrapCall, TryCatch,
+    Lit, Neg, Not, PartialCall, PartialCallArgument, Range, Return, Throw,
+    TrapCall, TryCatch,
 };
 
 // TODO exponential numbers
-// TODO really long strings (use """ in Axon?)
-// TODO format .get() as []
-// TODO defcomp
+// Potential future work:
+//     * Format .get() as []
+//     * Format really long strings with """ in Axon
+//     * Handle defcomps
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
@@ -359,13 +361,12 @@ impl Rewrite for Expr {
             Self::Lit(x) => x.rewrite(context),
             Self::Neg(x) => x.rewrite(context),
             Self::Not(x) => x.rewrite(context),
-            // Self::PartialCall(_) => false,
+            Self::PartialCall(x) => x.rewrite(context),
             Self::Range(x) => x.rewrite(context),
             Self::Return(x) => x.rewrite(context),
             Self::Throw(x) => x.rewrite(context),
             Self::TrapCall(x) => x.rewrite(context),
             Self::TryCatch(x) => x.rewrite(context),
-            _ => todo!(),
         }
     }
 }
@@ -376,6 +377,80 @@ impl Rewrite for CallTarget {
             CallTarget::Expr(x) => x.rewrite(context),
             CallTarget::FuncName(x) => {
                 Some(format!("{ind}{name}", ind = context.indent(), name = x))
+            }
+        }
+    }
+}
+
+impl Rewrite for PartialCall {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let target = self.target.rewrite(context)?;
+        let cat_target = if self.target_needs_parens() {
+            add_parens(&target)
+        } else {
+            target
+        };
+        if context.str_within_max_width(&cat_target) {
+            self.call_arg_type().add_call_to_target(
+                cat_target,
+                context,
+                LambdaPos::Trailing,
+            )
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialCall {
+    fn target_needs_parens(&self) -> bool {
+        match self.target {
+            CallTarget::Expr(_) => true,
+            CallTarget::FuncName(_) => false,
+        }
+    }
+}
+
+impl PartialCall {
+    fn call_arg_type(&self) -> CallArgType {
+        let mut args = self.args.clone();
+        if args.is_empty() {
+            CallArgType::NoArgs(NoArgs)
+        } else {
+            let last_index = args.len() - 1;
+            let last_arg = args.remove(last_index);
+            match last_arg {
+                PartialCallArgument::Expr(Expr::Func(func)) => {
+                    if args.is_empty() {
+                        CallArgType::OnlyLambda(OnlyLambda::new(*func))
+                    } else {
+                        let args = args
+                            .into_iter()
+                            .map(|a| match a {
+                                PartialCallArgument::Expr(e) => Arg::Expr(e),
+                                PartialCallArgument::Placeholder => {
+                                    Arg::Placeholder
+                                }
+                            })
+                            .collect();
+                        CallArgType::ArgsAndLambda(ArgsAndLambda::new(
+                            args, *func,
+                        ))
+                    }
+                }
+                _ => {
+                    args.push(last_arg);
+                    let all_args = args
+                        .into_iter()
+                        .map(|a| match a {
+                            PartialCallArgument::Expr(e) => Arg::Expr(e),
+                            PartialCallArgument::Placeholder => {
+                                Arg::Placeholder
+                            }
+                        })
+                        .collect();
+                    CallArgType::OnlyArgs(OnlyArgs::new(all_args))
+                }
             }
         }
     }
@@ -589,14 +664,14 @@ impl CallArgType {
 #[derive(Clone, Debug, PartialEq)]
 enum Arg {
     Expr(Expr),
-    _Placeholder, // TODO
+    Placeholder,
 }
 
 impl Rewrite for Arg {
     fn rewrite(&self, context: Context) -> Option<String> {
         match self {
             Self::Expr(expr) => expr.rewrite(context),
-            Self::_Placeholder => {
+            Self::Placeholder => {
                 let code = format!("{ind}_", ind = context.indent());
                 if context.str_within_max_width(&code) {
                     Some(code)
@@ -722,7 +797,8 @@ impl OnlyLambda {
                 // <something>() () => do
                 //     ...
                 // end
-                let lambda2 = self.lambda.rewrite(target_context)?;
+                let lambda2 = self.lambda.clone();
+                let lambda2 = lambda2.blockify().rewrite(target_context)?;
                 let lambda2 = lambda2.trim_start();
                 let code2 = format!(
                     "{target}() {lambda}",
@@ -2043,7 +2119,7 @@ impl BinOp {
             Expr::Range(_) => true,
             Expr::Return(_) => true,
             Expr::Throw(_) => true,
-            Expr::TrapCall(_) => true,
+            Expr::TrapCall(_) => false,
             Expr::TryCatch(_) => true,
         }
     }
@@ -2569,11 +2645,11 @@ end";
     #[test]
     fn func_with_one_param_no_default_works() {
         let params = vec![Param::new(tn("a"), None)];
-        let func = Func::new(params, ex_lit_num(100));
-        let code = func.rewrite(nc(0, 7)).unwrap();
+        let func = Func::new(params, ex_lit_num(12345));
+        let code = func.rewrite(nc(0, 9)).unwrap();
         // If a function is rewritten over multiple lines, ensure it always
         // surrounds parameters with parentheses.
-        assert_eq!(code, "(a) => do\n    100\nend");
+        assert_eq!(code, "(a) => do\n    12345\nend");
     }
 
     #[test]
@@ -2613,8 +2689,11 @@ end";
             Param::new(tn("second"), Some(ex_lit_num(1))),
         ];
         let func = Func::new(params, ex_lit_num(0));
-        let code = func.rewrite(nc(1, 6)).unwrap();
-        assert_eq!(code, " (first, second: 1) => do\n     0\n end");
+        let code = func.rewrite(nc(1, 14)).unwrap();
+        assert_eq!(
+            code,
+            " (\n     first,\n     second: 1\n ) => do\n     0\n end"
+        );
     }
 
     #[test]
@@ -3031,38 +3110,6 @@ end";
     // =====================================================================
 
     #[test]
-    fn dot_call_rewrite_nested_one_line() {
-        let target = Box::new(ex_id("value"));
-        let name1 = FuncName::TagName(tn("function1"));
-        let args1 = vec![];
-        let dot_call_inner =
-            Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
-
-        let name2 = FuncName::TagName(tn("function2"));
-        let args2 = vec![];
-        let dot_call = DotCall::new(name2, dot_call_inner, args2);
-
-        let code = dot_call.rewrite(c()).unwrap();
-        assert_eq!(code, "value.function1().function2()");
-    }
-
-    #[test]
-    fn dot_call_rewrite_nested_two_lines() {
-        let target = Box::new(ex_id("value"));
-        let name1 = FuncName::TagName(tn("function1"));
-        let args1 = vec![];
-        let dot_call_inner =
-            Box::new(Expr::DotCall(DotCall::new(name1, target, args1)));
-
-        let name2 = FuncName::TagName(tn("function2"));
-        let args2 = vec![];
-        let dot_call = DotCall::new(name2, dot_call_inner, args2);
-
-        let code = dot_call.rewrite(nc(1, 18)).unwrap();
-        assert_eq!(code, " value.function1()\n     .function2()");
-    }
-
-    #[test]
     fn dot_call_rewrite_nested_chained() {
         let target = Box::new(ex_id("value"));
         let name1 = FuncName::TagName(tn("function1"));
@@ -3201,7 +3248,7 @@ end)(1)";
         let target = CallTarget::FuncName(FuncName::TagName(tn("value")));
         let args = vec![lambda_long()];
         let call = Call::new(target, args);
-        let code = call.rewrite(nc(1, 17)).unwrap();
+        let code = call.rewrite(nc(1, 21)).unwrap();
         assert_eq!(code, " value() () => do\n     1234567\n end")
     }
 

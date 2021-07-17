@@ -64,8 +64,6 @@ pub fn parse_func_to_formatted_string(
     axon: &str,
     max_width: usize,
 ) -> Result<String, Error> {
-    // use fmt::Rewrite;
-
     let func = parse_func(axon)?;
     let context = fmt::Context::new(0, max_width);
     let widen = true;
@@ -77,7 +75,7 @@ pub fn parse_func_to_formatted_string(
 mod tests {
     #[test]
     fn it_works() {
-        let code = include_str!("./test0.txt");
+        let code = include_str!("./test2.txt");
         let x = crate::parse_func_to_formatted_string(code, 80).unwrap(); // todo fails at 107
         println!("{}", x);
     }
