@@ -39,33 +39,26 @@ pub enum Error {
     Rewrite,
 }
 
-/// If the axon input represents a function, parse it and return a `Vec<String>`,
-/// each string being a formatted line of code.
+/// If the axon input represents a function, parse it and return a `String`
+/// which contains formatted code.
 ///
 /// The `axon` argument to this function should be a string containing the
-/// output of running `toAxonCode(parseAst( ... ))` in SkySpark.
+/// output of running `<some function src>.parseAst.toAxonCode` in SkySpark.
 ///
 /// # Example
 /// ```rust
-/// use axon_parser::parse_func_to_formatted_lines;
-/// use axon_parser::Indent;
+/// use axon_parser::format_func;
 ///
-/// let indent = Indent::new("  ".to_string(), 0); // 2-space indentation
-///
+/// let desired_width = 80;
 /// let axon = r###"{type:"func", params:[], body:{type:"block", exprs:[{type:"literal", val:"hello world"}]}}"###;
-/// let lines = parse_func_to_formatted_lines(axon, &indent).unwrap();
-/// assert_eq!(lines.len(), 3);
-/// assert_eq!(lines[0], "() => do");
-/// assert_eq!(lines[1], "  \"hello world\"");
-/// assert_eq!(lines[2], "end");
+/// let formatted_code = format_func(axon, desired_width).unwrap();
+/// let expected_code = "() => do\n    \"hello world\"\nend";
+/// assert_eq!(formatted_code, expected_code);
 /// ```
 ///
-pub fn parse_func_to_formatted_string(
-    axon: &str,
-    max_width: usize,
-) -> Result<String, Error> {
+pub fn format_func(axon: &str, desired_width: usize) -> Result<String, Error> {
     let func = parse_func(axon)?;
-    let context = fmt::Context::new(0, max_width);
+    let context = fmt::Context::new(0, desired_width);
     let widen = true;
     let code = func.default_rewrite(context, widen);
     code.ok_or(Error::Rewrite)
@@ -76,7 +69,7 @@ mod tests {
     #[test]
     fn it_works() {
         let code = include_str!("./test2.txt");
-        let x = crate::parse_func_to_formatted_string(code, 80).unwrap(); // todo fails at 107
+        let x = crate::format_func(code, 80).unwrap(); // todo fails at 107
         println!("{}", x);
     }
 }
