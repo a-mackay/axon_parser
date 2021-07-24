@@ -501,6 +501,7 @@ impl BuildDotCallsChain {
     }
 }
 
+/// A single dot call which is part of a dot call chain.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ChainedDotCall {
     pub(crate) func_name: FuncName,
