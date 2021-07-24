@@ -1420,9 +1420,13 @@ impl Rewrite for DotCallsChain {
     }
 }
 
+/// A specific type of DotCall, which get treated differently when
+/// formatting.
 #[derive(Clone, Debug, PartialEq)]
 enum SubDotCall {
+    /// A non-chained dot call, like <not a dotcall>.someFunc()
     One(DotCallOne),
+    /// A chained dot call, like a.b.c()
     Chain(DotCallsChain),
 }
 
