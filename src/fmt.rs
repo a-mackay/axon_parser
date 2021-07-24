@@ -492,8 +492,8 @@ impl Rewrite for DotCall {
 }
 
 impl DotCall {
-    fn target_needs_parens(&self) -> bool {
-        match self.target.as_ref() {
+    fn target_needs_parens(target: &Expr) -> bool {
+        match target {
             Expr::Add(_) => true,
             Expr::And(_) => true,
             Expr::Cmp(_) => true,
@@ -1397,7 +1397,15 @@ impl TryCatch {
 
 impl Rewrite for DotCallsChain {
     fn rewrite(&self, context: Context) -> Option<String> {
-        let target = self.target.rewrite(context)?;
+        if let Some(one_line) = self.rewrite_one_line(context) {
+            return Some(one_line);
+        }
+
+        let mut target = self.target.rewrite(context)?;
+        if DotCall::target_needs_parens(&self.target) {
+            target = add_parens(&target);
+        }
+
         let chained_context = context.increase_indent();
         let chained: Option<Vec<String>> = self
             .chain
@@ -1412,6 +1420,49 @@ impl Rewrite for DotCallsChain {
         let chain = chained.join("\n");
 
         let code = format!("{target}\n{chain}", target = target, chain = chain);
+        if context.str_within_max_width(&code) {
+            Some(code)
+        } else {
+            None
+        }
+    }
+}
+
+impl DotCallsChain {
+    fn rewrite_one_line(&self, context: Context) -> Option<String> {
+        let mut target = self.target.rewrite(context)?;
+        if DotCall::target_needs_parens(&self.target) {
+            target = add_parens(&target);
+        }
+
+        if !is_one_line(&target) {
+            return None;
+        }
+
+        let chained: Option<Vec<String>> = self
+            .chain
+            .iter()
+            .map(|cdc| cdc.rewrite(context, LambdaPos::NotTrailing))
+            .collect();
+        let mut chained = chained?;
+        let is_multi_line = chained.iter().any(|string| !is_one_line(&string));
+
+        if is_multi_line {
+            return None;
+        }
+
+        let last_chained =
+            self.last.rewrite(context, LambdaPos::Trailing)?;
+        if !is_one_line(&last_chained) {
+            return None;
+        }
+
+        chained.push(last_chained);
+        chained = chained.into_iter().map(|string| string.trim().to_owned()).collect::<Vec<_>>();
+
+        let chain = chained.join("");
+
+        let code = format!("{target}{chain}", target = target, chain = chain);
         if context.str_within_max_width(&code) {
             Some(code)
         } else {
@@ -1459,7 +1510,7 @@ impl Rewrite for DotCallOne {
         let dot_call = self.0.clone();
         let target = dot_call.target.rewrite(context)?;
 
-        let cat_target = if dot_call.target_needs_parens() {
+        let cat_target = if DotCall::target_needs_parens(&dot_call.target) {
             format!(
                 "{target}.{name}",
                 target = add_parens(&target),
