@@ -79,35 +79,25 @@ fn comp_cell_val_to_ast_dict(cell_val: &Val) -> Option<Dict> {
 
 fn comp_cell_lit_to_dict_val(lit: &ap::Lit) -> DictVal {
     match lit {
-        ap::Lit::Bool(bool) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Bool(*bool))))
-        }
-        ap::Lit::Date(date) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Date(*date))))
-        }
+        ap::Lit::Bool(bool) => DictVal::Expr(Expr::Lit(Lit::Bool(*bool))),
+        ap::Lit::Date(date) => DictVal::Expr(Expr::Lit(Lit::Date(*date))),
         ap::Lit::DictMarker => DictVal::Marker,
         ap::Lit::DictRemoveMarker => DictVal::RemoveMarker,
-        ap::Lit::Null => DictVal::Expr(Expr::Lit(Lit::new(LitInner::Null))),
+        ap::Lit::Null => DictVal::Expr(Expr::Lit(Lit::Null)),
         ap::Lit::Num(number) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Num(number.clone()))))
+            DictVal::Expr(Expr::Lit(Lit::Num(number.clone())))
         }
-        ap::Lit::Ref(reff) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Ref(reff.clone()))))
-        }
+        ap::Lit::Ref(reff) => DictVal::Expr(Expr::Lit(Lit::Ref(reff.clone()))),
         ap::Lit::Str(string) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Str(string.clone()))))
+            DictVal::Expr(Expr::Lit(Lit::Str(string.clone())))
         }
         ap::Lit::Symbol(symbol) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Symbol(symbol.clone()))))
+            DictVal::Expr(Expr::Lit(Lit::Symbol(symbol.clone())))
         }
-        ap::Lit::Time(time) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Time(*time))))
-        }
-        ap::Lit::Uri(uri) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Uri(uri.clone()))))
-        }
+        ap::Lit::Time(time) => DictVal::Expr(Expr::Lit(Lit::Time(*time))),
+        ap::Lit::Uri(uri) => DictVal::Expr(Expr::Lit(Lit::Uri(uri.clone()))),
         ap::Lit::YearMonth(ym) => {
-            DictVal::Expr(Expr::Lit(Lit::new(LitInner::YearMonth(ym.into()))))
+            DictVal::Expr(Expr::Lit(Lit::YearMonth(ym.into())))
         }
     }
 }
@@ -117,7 +107,7 @@ fn comp_cell_val_to_ast_list(list: &Val) -> Option<List> {
         Val::List(list) => {
             let exprs = list.iter().map(|value| {
             match value {
-                Val::Lit(lit) => Some(Expr::Lit(Lit::new(lit.try_into().expect("expected ap::Val::Lit in a comp cell list to parse into an ast::Lit")))),
+                Val::Lit(lit) => Some(Expr::Lit(lit.try_into().expect("expected ap::Val::Lit in a comp cell list to parse into an ast::Lit"))),
                 Val::Dict(_) => {
                     comp_cell_val_to_ast_dict(value).map(Expr::Dict)
                 },
@@ -1436,9 +1426,9 @@ impl TryFrom<&Val> for Expr {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
-        let lit: Option<LitInner> = val.try_into().ok();
+        let lit: Option<Lit> = val.try_into().ok();
         if let Some(lit) = lit {
-            return Ok(Expr::Lit(Lit::new(lit)));
+            return Ok(Expr::Lit(lit));
         };
 
         if let Some(tag_name) = var_val_to_tag_name(val) {
@@ -1723,29 +1713,9 @@ impl TryFrom<&ap::Val> for Param {
     }
 }
 
-// TODO replace LitInner with Lit
-#[derive(Clone, Debug, PartialEq)]
-pub struct Lit {
-    lit: LitInner,
-}
-
-impl Lit {
-    pub fn new(lit: LitInner) -> Self {
-        Self { lit }
-    }
-
-    pub fn lit(&self) -> &LitInner {
-        &self.lit
-    }
-
-    pub fn to_axon_code(&self) -> String {
-        self.lit().to_axon_code()
-    }
-}
-
 /// A Axon literal value.
 #[derive(Clone, Debug, PartialEq)]
-pub enum LitInner {
+pub enum Lit {
     Bool(bool),
     Date(NaiveDate),
     Null,
@@ -1758,7 +1728,7 @@ pub enum LitInner {
     YearMonth(YearMonth),
 }
 
-impl LitInner {
+impl Lit {
     pub fn to_axon_code(&self) -> String {
         match self {
             Self::Bool(true) => "true".to_owned(),
@@ -1792,30 +1762,30 @@ pub enum ConvertLitError {
     IsDictRemoveMarker,
 }
 
-impl TryFrom<&ap::Lit> for LitInner {
+impl TryFrom<&ap::Lit> for Lit {
     type Error = ConvertLitError;
 
     fn try_from(lit: &ap::Lit) -> Result<Self, Self::Error> {
         match lit {
-            ap::Lit::Bool(bool) => Ok(LitInner::Bool(*bool)),
-            ap::Lit::Date(date) => Ok(LitInner::Date(*date)),
+            ap::Lit::Bool(bool) => Ok(Lit::Bool(*bool)),
+            ap::Lit::Date(date) => Ok(Lit::Date(*date)),
             ap::Lit::DictMarker => Err(ConvertLitError::IsDictMarker),
             ap::Lit::DictRemoveMarker => {
                 Err(ConvertLitError::IsDictRemoveMarker)
             }
-            ap::Lit::Null => Ok(LitInner::Null),
-            ap::Lit::Num(number) => Ok(LitInner::Num(number.clone())),
-            ap::Lit::Ref(reff) => Ok(LitInner::Ref(reff.clone())),
-            ap::Lit::Str(string) => Ok(LitInner::Str(string.clone())),
-            ap::Lit::Symbol(symbol) => Ok(LitInner::Symbol(symbol.clone())),
-            ap::Lit::Time(time) => Ok(LitInner::Time(*time)),
-            ap::Lit::Uri(uri) => Ok(LitInner::Uri(uri.clone())),
-            ap::Lit::YearMonth(ym) => Ok(LitInner::YearMonth(ym.into())),
+            ap::Lit::Null => Ok(Lit::Null),
+            ap::Lit::Num(number) => Ok(Lit::Num(number.clone())),
+            ap::Lit::Ref(reff) => Ok(Lit::Ref(reff.clone())),
+            ap::Lit::Str(string) => Ok(Lit::Str(string.clone())),
+            ap::Lit::Symbol(symbol) => Ok(Lit::Symbol(symbol.clone())),
+            ap::Lit::Time(time) => Ok(Lit::Time(*time)),
+            ap::Lit::Uri(uri) => Ok(Lit::Uri(uri.clone())),
+            ap::Lit::YearMonth(ym) => Ok(Lit::YearMonth(ym.into())),
         }
     }
 }
 
-impl TryFrom<&Val> for LitInner {
+impl TryFrom<&Val> for Lit {
     type Error = ();
 
     fn try_from(val: &Val) -> Result<Self, Self::Error> {
@@ -1985,11 +1955,11 @@ mod tests {
     use std::convert::TryInto;
 
     fn lit_str(s: &str) -> Lit {
-        Lit::new(LitInner::Str(s.to_owned()))
+        Lit::Str(s.to_owned())
     }
 
     fn lit_num(n: f64) -> Lit {
-        Lit::new(LitInner::Num(Number::new(n, None)))
+        Lit::Num(Number::new(n, None))
     }
 
     fn idtn(tag_name: &str) -> Id {
@@ -2017,8 +1987,8 @@ mod tests {
     #[test]
     fn val_to_lit_works() {
         let val = &ap_parse(r#"{type:"literal", val:"hello"}"#).unwrap();
-        let expected = LitInner::Str("hello".to_owned());
-        let lit: LitInner = val.try_into().unwrap();
+        let expected = Lit::Str("hello".to_owned());
+        let lit: Lit = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
 
@@ -2026,8 +1996,8 @@ mod tests {
     fn val_to_lit_symbol_works() {
         let val = &ap_parse(r#"{type:"literal", val:^steam-boiler}"#).unwrap();
         let expected =
-            LitInner::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
-        let lit: LitInner = val.try_into().unwrap();
+            Lit::Symbol(Symbol::new("^steam-boiler".to_owned()).unwrap());
+        let lit: Lit = val.try_into().unwrap();
         assert_eq!(lit, expected);
     }
 
@@ -2424,9 +2394,8 @@ mod tests {
         let val = &ap_parse(r#"{type:"compdef", params:[{name:"cells"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"out"}, rhs:{type:"var", name:"in"}}]}, cells:{in:{is:^number, defVal:0}, out:{is:^number, ro}}}"#).unwrap();
         let mut cells = HashMap::new();
 
-        let num =
-            Lit::new(LitInner::Symbol(Symbol::new("^number".into()).unwrap()));
-        let zero = Lit::new(LitInner::Num(Number::new_unitless(0.0)));
+        let num = Lit::Symbol(Symbol::new("^number".into()).unwrap());
+        let zero = Lit::Num(Number::new_unitless(0.0));
         let mut in_dict_map = HashMap::new();
         in_dict_map.insert(tn("is"), DictVal::Expr(Expr::Lit(num.clone())));
         in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::Lit(zero)));
@@ -2457,19 +2426,18 @@ mod tests {
         let mut cells = HashMap::new();
 
         let mut nested_map = HashMap::new();
-        let one = Lit::new(LitInner::Num(Number::new_unitless(1.0)));
+        let one = Lit::Num(Number::new_unitless(1.0));
         nested_map.insert(tn("a"), DictVal::Expr(Expr::Lit(one)));
         let nested_dict = Dict::new(nested_map);
 
         let mut in_dict_map = HashMap::new();
-        in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::Dict(nested_dict)));
+        in_dict_map
+            .insert(tn("defVal"), DictVal::Expr(Expr::Dict(nested_dict)));
         let in_dict = Dict::new(in_dict_map);
 
         cells.insert(tn("in"), in_dict);
 
-        let body = Block::new(vec![
-            Expr::Id(Id::new(tn("in"))),
-        ]);
+        let body = Block::new(vec![Expr::Id(Id::new(tn("in")))]);
         let expected = Comp::new(cells, body);
 
         let comp: Comp = val.try_into().unwrap();
@@ -2482,20 +2450,17 @@ mod tests {
         let val = &ap_parse(r#"{type:"compdef", params:[{name:"cells"}], body:{type:"block", exprs:[{type:"var", name:"in"}]}, cells:{in:{defVal:[1]}}}"#).unwrap();
         let mut cells = HashMap::new();
 
-        let one = Lit::new(LitInner::Num(Number::new_unitless(1.0)));
-        let nested_list = List::new(vec![
-            Expr::Lit(one),
-        ]);
+        let one = Lit::Num(Number::new_unitless(1.0));
+        let nested_list = List::new(vec![Expr::Lit(one)]);
 
         let mut in_dict_map = HashMap::new();
-        in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::List(nested_list)));
+        in_dict_map
+            .insert(tn("defVal"), DictVal::Expr(Expr::List(nested_list)));
         let in_dict = Dict::new(in_dict_map);
 
         cells.insert(tn("in"), in_dict);
 
-        let body = Block::new(vec![
-            Expr::Id(Id::new(tn("in"))),
-        ]);
+        let body = Block::new(vec![Expr::Id(Id::new(tn("in")))]);
         let expected = Comp::new(cells, body);
 
         let comp: Comp = val.try_into().unwrap();

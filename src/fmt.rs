@@ -2232,8 +2232,8 @@ mod tests {
     use super::*;
     use crate::ast::{
         Add, And, Assign, BinOp, BinOpId, Block, Call, CallTarget, Def, Dict,
-        DotCall, Expr, FuncName, Id, If, List, Lit, LitInner, Mul, Neg, Not,
-        Or, Param, Return, Sub, Throw, TrapCall, TryCatch,
+        DotCall, Expr, FuncName, Id, If, List, Lit, Mul, Neg, Not, Or, Param,
+        Return, Sub, Throw, TrapCall, TryCatch,
     };
     use raystack_core::{Number, TagName};
     use std::collections::HashMap;
@@ -2249,8 +2249,7 @@ mod tests {
     }
 
     fn lit_bool(b: bool) -> Lit {
-        let inner = LitInner::Bool(b);
-        Lit::new(inner)
+        Lit::Bool(b)
     }
 
     fn ex_lit_bool(b: bool) -> Expr {
@@ -2259,8 +2258,7 @@ mod tests {
 
     fn lit_num(n: usize) -> Lit {
         let num = Number::new(n as f64, None);
-        let inner = LitInner::Num(num);
-        Lit::new(inner)
+        Lit::Num(num)
     }
 
     fn ex_lit_num(n: usize) -> Expr {
