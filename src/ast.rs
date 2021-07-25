@@ -5,6 +5,133 @@ use raystack_core::{Number, Qname, Ref, Symbol, TagName};
 use std::collections::HashMap;
 use std::convert::{From, TryFrom, TryInto};
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Comp {
+    cells: HashMap<TagName, Dict>,
+    body: Block,
+}
+
+impl Comp {
+    pub fn new(cells: HashMap<TagName, Dict>, body: Block) -> Self {
+        Self { cells, body }
+    }
+}
+
+impl TryFrom<&Val> for Comp {
+    type Error = ();
+
+    fn try_from(val: &Val) -> Result<Self, Self::Error> {
+        let hash_map = map_for_type(val, "compdef").map_err(|_| ())?;
+        let body = get_val(hash_map, "body")
+            .expect("comdef should contain 'body' tag");
+        let cells = get_val(hash_map, "cells")
+            .expect("compdef should contain 'cells' tag");
+
+        let cells_dict = match cells {
+            Val::Dict(cells_map) => cells_map,
+            _ => return Err(()),
+        };
+
+        let cells_dict = cells_dict
+            .iter()
+            .map(|(key, value)| {
+                comp_cell_val_to_ast_dict(value).map(|dict| (key.clone(), dict))
+            })
+            .collect::<Option<HashMap<_, _>>>()
+            .ok_or(())?;
+
+        let body_block = body
+            .try_into()
+            .expect("compdef 'body' could not be parsed as a Block");
+
+        Ok(Self::new(cells_dict, body_block))
+    }
+}
+
+/// Takes a Val which should be a comp cell Dict, and attempts to parse it
+/// into an ast::Dict.
+fn comp_cell_val_to_ast_dict(cell_val: &Val) -> Option<Dict> {
+    match cell_val {
+        Val::Dict(hash_map) => {
+            let dict_map = hash_map
+                .clone()
+                .into_iter()
+                .map(|(key, value)| {
+                    let new_value = match value.as_ref() {
+                        Val::Lit(lit) => Some(comp_cell_lit_to_dict_val(lit)),
+                        Val::Dict(_) => {
+                            comp_cell_val_to_ast_dict(value.as_ref())
+                                .map(|dict| DictVal::Expr(Expr::Dict(dict)))
+                        }
+                        Val::List(_) => {
+                            comp_cell_val_to_ast_list(value.as_ref())
+                                .map(|list| DictVal::Expr(Expr::List(list)))
+                        }
+                    };
+                    Some((key, new_value?))
+                })
+                .collect::<Option<HashMap<_, _>>>();
+            Some(Dict::new(dict_map?))
+        }
+        _ => None,
+    }
+}
+
+fn comp_cell_lit_to_dict_val(lit: &ap::Lit) -> DictVal {
+    match lit {
+        ap::Lit::Bool(bool) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Bool(*bool))))
+        }
+        ap::Lit::Date(date) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Date(*date))))
+        }
+        ap::Lit::DictMarker => DictVal::Marker,
+        ap::Lit::DictRemoveMarker => DictVal::RemoveMarker,
+        ap::Lit::Null => DictVal::Expr(Expr::Lit(Lit::new(LitInner::Null))),
+        ap::Lit::Num(number) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Num(number.clone()))))
+        }
+        ap::Lit::Ref(reff) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Ref(reff.clone()))))
+        }
+        ap::Lit::Str(string) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Str(string.clone()))))
+        }
+        ap::Lit::Symbol(symbol) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Symbol(symbol.clone()))))
+        }
+        ap::Lit::Time(time) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Time(*time))))
+        }
+        ap::Lit::Uri(uri) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::Uri(uri.clone()))))
+        }
+        ap::Lit::YearMonth(ym) => {
+            DictVal::Expr(Expr::Lit(Lit::new(LitInner::YearMonth(ym.into()))))
+        }
+    }
+}
+
+fn comp_cell_val_to_ast_list(list: &Val) -> Option<List> {
+    match list {
+        Val::List(list) => {
+            let exprs = list.iter().map(|value| {
+            match value {
+                Val::Lit(lit) => Some(Expr::Lit(Lit::new(lit.try_into().expect("expected ap::Val::Lit in a comp cell list to parse into an ast::Lit")))),
+                Val::Dict(_) => {
+                    comp_cell_val_to_ast_dict(value).map(Expr::Dict)
+                },
+                Val::List(_) => {
+                    comp_cell_val_to_ast_list(value).map(Expr::List)
+                }
+            }
+        }).collect::<Option<Vec<_>>>();
+            Some(List::new(exprs?))
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Associativity {
     Left,
@@ -1596,6 +1723,7 @@ impl TryFrom<&ap::Val> for Param {
     }
 }
 
+// TODO replace LitInner with Lit
 #[derive(Clone, Debug, PartialEq)]
 pub struct Lit {
     lit: LitInner,
@@ -1658,6 +1786,7 @@ fn number_to_axon_code(n: &Number) -> String {
 
 /// Enumerates the types of errors that can occur when converting to a
 /// `Lit`.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConvertLitError {
     IsDictMarker,
     IsDictRemoveMarker,
@@ -2288,6 +2417,38 @@ mod tests {
         let expected = Neg::new(operand);
         let neg: Neg = val.try_into().unwrap();
         assert_eq!(neg, expected);
+    }
+
+    #[test]
+    fn val_to_comp_works() {
+        let val = &ap_parse(r#"{type:"compdef", params:[{name:"cells"}], body:{type:"block", exprs:[{type:"assign", lhs:{type:"var", name:"out"}, rhs:{type:"var", name:"in"}}]}, cells:{in:{is:^number, defVal:0}, out:{is:^number, ro}}}"#).unwrap();
+        let mut cells = HashMap::new();
+
+        let num =
+            Lit::new(LitInner::Symbol(Symbol::new("^number".into()).unwrap()));
+        let zero = Lit::new(LitInner::Num(Number::new_unitless(0.0)));
+        let mut in_dict_map = HashMap::new();
+        in_dict_map.insert(tn("is"), DictVal::Expr(Expr::Lit(num.clone())));
+        in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::Lit(zero)));
+        let in_dict = Dict::new(in_dict_map);
+
+        let mut out_dict_map = HashMap::new();
+        out_dict_map.insert(tn("is"), DictVal::Expr(Expr::Lit(num)));
+        out_dict_map.insert(tn("ro"), DictVal::Marker);
+        let out_dict = Dict::new(out_dict_map);
+
+        cells.insert(tn("in"), in_dict);
+        cells.insert(tn("out"), out_dict);
+
+        let body = Block::new(vec![Expr::Assign(Assign::new(
+            tn("out"),
+            Expr::Id(Id::new(tn("in"))),
+        ))]);
+        let expected = Comp::new(cells, body);
+
+        let comp: Comp = val.try_into().unwrap();
+
+        assert_eq!(expected, comp);
     }
 
     #[test]

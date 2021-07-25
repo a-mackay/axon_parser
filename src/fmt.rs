@@ -1451,14 +1451,16 @@ impl DotCallsChain {
             return None;
         }
 
-        let last_chained =
-            self.last.rewrite(context, LambdaPos::Trailing)?;
+        let last_chained = self.last.rewrite(context, LambdaPos::Trailing)?;
         if !is_one_line(&last_chained) {
             return None;
         }
 
         chained.push(last_chained);
-        chained = chained.into_iter().map(|string| string.trim().to_owned()).collect::<Vec<_>>();
+        chained = chained
+            .into_iter()
+            .map(|string| string.trim().to_owned())
+            .collect::<Vec<_>>();
 
         let chain = chained.join("");
 
