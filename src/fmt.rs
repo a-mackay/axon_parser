@@ -129,7 +129,7 @@ impl DictVal {
                 let expr = expr.rewrite(context)?;
                 let prefix = format!("{}: ", name);
                 add_after_leading_indent(&prefix, &expr)
-            },
+            }
             DictVal::Marker => format!("{ind}{name}", ind = ind, name = name),
             DictVal::RemoveMarker => {
                 format!("{ind}-{name}", ind = ind, name = name)
@@ -2701,7 +2701,10 @@ mod tests {
         ]));
         let trap_call = TrapCall::new(dict, "x".to_owned());
         let code = trap_call.rewrite(nc(1, 13)).unwrap();
-        assert_eq!(code, " {\n     abcdef,\n     -ghijkl,\n     xyz: 10,\n }->x");
+        assert_eq!(
+            code,
+            " {\n     abcdef,\n     -ghijkl,\n     xyz: 10,\n }->x"
+        );
     }
 
     #[test]
