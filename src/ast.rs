@@ -2452,6 +2452,58 @@ mod tests {
     }
 
     #[test]
+    fn val_to_comp_with_nested_dict_works() {
+        let val = &ap_parse(r#"{type:"compdef", params:[{name:"cells"}], body:{type:"block", exprs:[{type:"var", name:"in"}]}, cells:{in:{defVal:{a:1}}}}"#).unwrap();
+        let mut cells = HashMap::new();
+
+        let mut nested_map = HashMap::new();
+        let one = Lit::new(LitInner::Num(Number::new_unitless(1.0)));
+        nested_map.insert(tn("a"), DictVal::Expr(Expr::Lit(one)));
+        let nested_dict = Dict::new(nested_map);
+
+        let mut in_dict_map = HashMap::new();
+        in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::Dict(nested_dict)));
+        let in_dict = Dict::new(in_dict_map);
+
+        cells.insert(tn("in"), in_dict);
+
+        let body = Block::new(vec![
+            Expr::Id(Id::new(tn("in"))),
+        ]);
+        let expected = Comp::new(cells, body);
+
+        let comp: Comp = val.try_into().unwrap();
+
+        assert_eq!(expected, comp);
+    }
+
+    #[test]
+    fn val_to_comp_with_nested_list_works() {
+        let val = &ap_parse(r#"{type:"compdef", params:[{name:"cells"}], body:{type:"block", exprs:[{type:"var", name:"in"}]}, cells:{in:{defVal:[1]}}}"#).unwrap();
+        let mut cells = HashMap::new();
+
+        let one = Lit::new(LitInner::Num(Number::new_unitless(1.0)));
+        let nested_list = List::new(vec![
+            Expr::Lit(one),
+        ]);
+
+        let mut in_dict_map = HashMap::new();
+        in_dict_map.insert(tn("defVal"), DictVal::Expr(Expr::List(nested_list)));
+        let in_dict = Dict::new(in_dict_map);
+
+        cells.insert(tn("in"), in_dict);
+
+        let body = Block::new(vec![
+            Expr::Id(Id::new(tn("in"))),
+        ]);
+        let expected = Comp::new(cells, body);
+
+        let comp: Comp = val.try_into().unwrap();
+
+        assert_eq!(expected, comp);
+    }
+
+    #[test]
     fn misc_func_works() {
         let val =
             &ap_parse(include_str!("../test_input/misc_func.txt")).unwrap();
