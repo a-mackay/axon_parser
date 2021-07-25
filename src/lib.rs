@@ -148,7 +148,7 @@ pub fn format_comp(axon: &str, desired_width: usize) -> Result<String, Error> {
 //     #[test]
 //     fn it_works() {
 //         let code = include_str!("./test2.txt");
-//         let x = crate::format_func(code, 80).unwrap();
+//         let x = crate::format(code, 80).unwrap();
 //         println!("{}", x);
 //     }
 // }

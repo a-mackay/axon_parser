@@ -45,7 +45,7 @@ impl Comp {
             let cell_str = add_after_leading_indent(&name, &dict_str);
             cell_strs.push(cell_str);
         }
-        let cells = cell_strs.join(",\n");
+        let cells = cell_strs.join("\n");
 
         let body = if widen {
             self.body.rewrite_and_widen_if_necessary(cells_context)?
@@ -121,6 +121,29 @@ impl Rewrite for DictVal {
     }
 }
 
+impl DictVal {
+    fn short_rewrite(&self, context: Context, name: &str) -> Option<String> {
+        let ind = context.indent();
+        let new_code = match self {
+            DictVal::Expr(expr) => {
+                let expr = expr.rewrite(context)?;
+                let prefix = format!("{}: ", name);
+                add_after_leading_indent(&prefix, &expr)
+            },
+            DictVal::Marker => format!("{ind}{name}", ind = ind, name = name),
+            DictVal::RemoveMarker => {
+                format!("{ind}-{name}", ind = ind, name = name)
+            }
+        };
+
+        if context.str_within_max_width(&new_code) {
+            Some(new_code)
+        } else {
+            None
+        }
+    }
+}
+
 impl Rewrite for Dict {
     fn rewrite(&self, context: Context) -> Option<String> {
         let pairs = self.pairs();
@@ -135,10 +158,7 @@ impl Rewrite for Dict {
             let pairs: Option<Vec<String>> = pairs
                 .iter()
                 .map(|(name, value)| {
-                    value.rewrite(one_line_context).map(|code| {
-                        let prefix = format!("{}: ", name);
-                        add_after_leading_indent(&prefix, &code)
-                    })
+                    value.short_rewrite(one_line_context, name)
                 })
                 .collect();
 
@@ -185,13 +205,8 @@ impl Dict {
         let pairs: Option<Vec<String>> = pairs
             .into_iter()
             .map(|(name, value)| {
-                let code = value.rewrite(pairs_context);
-                let prefix = format!("{}: ", name);
-                code.map(|code| {
-                    let code = add_after_leading_indent(&prefix, &code);
-                    format!("{},\n", code)
-                })
-                .and_then(|pair_str| {
+                let code = value.short_rewrite(pairs_context, &name);
+                code.and_then(|pair_str| {
                     // pair_str is something like tagName: "some value"
                     if context.str_within_max_width(&pair_str) {
                         Some(pair_str)
@@ -202,10 +217,10 @@ impl Dict {
             })
             .collect();
         let pairs = pairs?;
-        let pairs_str = pairs.join("");
+        let pairs_str = pairs.join(",\n");
 
         let new_code =
-            format!("{ind}{{\n{pairs}{ind}}}", ind = ind, pairs = pairs_str);
+            format!("{ind}{{\n{pairs},\n{ind}}}", ind = ind, pairs = pairs_str);
 
         if context.str_within_max_width(&new_code) {
             Some(new_code)
@@ -2646,28 +2661,28 @@ mod tests {
             ("def", DictVal::RemoveMarker),
         ]);
         let code = dict.rewrite(c()).unwrap();
-        assert_eq!(code, "{abc: marker(), def: removeMarker(), xyz: 10}")
+        assert_eq!(code, "{abc, -def, xyz: 10}")
     }
 
     #[test]
     fn dict_multi_line_works() {
         let dict = dict(vec![
             ("xyz", DictVal::Expr(ex_lit_num(10))),
-            ("abc", DictVal::Marker),
-            ("def", DictVal::RemoveMarker),
+            ("abcdef", DictVal::Marker),
+            ("ghijkl", DictVal::RemoveMarker),
         ]);
-        let code = dict.rewrite(nc(1, 25)).unwrap();
-        assert_eq!(code, " {\n     abc: marker(),\n     def: removeMarker(),\n     xyz: 10,\n }")
+        let code = dict.rewrite(nc(1, 13)).unwrap();
+        assert_eq!(code, " {\n     abcdef,\n     -ghijkl,\n     xyz: 10,\n }")
     }
 
     #[test]
     fn dict_multi_line_not_enough_space_works() {
         let dict = dict(vec![
             ("xyz", DictVal::Expr(ex_lit_num(10))),
-            ("abc", DictVal::Marker),
-            ("def", DictVal::RemoveMarker),
+            ("abcdef", DictVal::Marker),
+            ("ghijkl", DictVal::RemoveMarker),
         ]);
-        assert!(dict.rewrite(nc(1, 24)).is_none());
+        assert!(dict.rewrite(nc(1, 12)).is_none());
     }
 
     #[test]
@@ -2681,12 +2696,12 @@ mod tests {
     fn trap_call_multi_line_works() {
         let dict = Expr::Dict(dict(vec![
             ("xyz", DictVal::Expr(ex_lit_num(10))),
-            ("abc", DictVal::Marker),
-            ("def", DictVal::RemoveMarker),
+            ("abcdef", DictVal::Marker),
+            ("ghijkl", DictVal::RemoveMarker),
         ]));
-        let trap_call = TrapCall::new(dict, "trapped".to_owned());
-        let code = trap_call.rewrite(nc(1, 25)).unwrap();
-        assert_eq!(code, " {\n     abc: marker(),\n     def: removeMarker(),\n     xyz: 10,\n }->trapped");
+        let trap_call = TrapCall::new(dict, "x".to_owned());
+        let code = trap_call.rewrite(nc(1, 13)).unwrap();
+        assert_eq!(code, " {\n     abcdef,\n     -ghijkl,\n     xyz: 10,\n }->x");
     }
 
     #[test]
