@@ -7,8 +7,8 @@ use std::convert::{From, TryFrom, TryInto};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Comp {
-    cells: HashMap<TagName, Dict>,
-    body: Block,
+    pub cells: HashMap<TagName, Dict>,
+    pub body: Block,
 }
 
 impl Comp {

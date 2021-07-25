@@ -1,8 +1,8 @@
 use crate::ast::{
-    Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall, Def,
-    Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, Id, If, List,
-    Lit, Neg, Not, PartialCall, PartialCallArgument, Range, Return, Throw,
-    TrapCall, TryCatch,
+    Assign, Associativity, BinOp, Block, Call, CallTarget, ChainedDotCall,
+    Comp, Def, Dict, DictVal, DotCall, DotCallsChain, Expr, FlatIf, Func, Id,
+    If, List, Lit, Neg, Not, PartialCall, PartialCallArgument, Range, Return,
+    Throw, TrapCall, TryCatch,
 };
 
 // TODO exponential numbers
@@ -16,6 +16,58 @@ const SPACES: usize = 4;
 /// An arbitrary big maximum width, supposed to be bigger than the width
 /// of any sane line of code.
 const MAX_WIDTH: usize = 1000;
+
+impl Rewrite for Comp {
+    fn rewrite(&self, context: Context) -> Option<String> {
+        let widen = false;
+        self.default_rewrite(context, widen)
+    }
+}
+
+impl Comp {
+    pub(crate) fn default_rewrite(
+        &self,
+        context: Context,
+        widen: bool,
+    ) -> Option<String> {
+        let ind = context.indent();
+        let prefix = format!("{ind}defcomp", ind = ind);
+        let suffix = format!("{ind}end", ind = ind);
+
+        let cells_context = context.increase_indent();
+        let mut sorted_cells = self.cells.iter().collect::<Vec<_>>();
+        sorted_cells.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+
+        let mut cell_strs = vec![];
+        for (tag_name, dict) in sorted_cells {
+            let dict_str = dict.rewrite(cells_context)?;
+            let name = format!("{}: ", tag_name);
+            let cell_str = add_after_leading_indent(&name, &dict_str);
+            cell_strs.push(cell_str);
+        }
+        let cells = cell_strs.join(",\n");
+
+        let body = if widen {
+            self.body.rewrite_and_widen_if_necessary(cells_context)?
+        } else {
+            self.body.rewrite(cells_context)?
+        };
+
+        let code = format!(
+            "{prefix}\n{cells}\n\n{body}\n{suffix}",
+            prefix = prefix,
+            cells = cells,
+            body = body,
+            suffix = suffix
+        );
+
+        if context.str_within_max_width(&code) {
+            Some(code)
+        } else {
+            None
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Context {
