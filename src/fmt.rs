@@ -2251,13 +2251,63 @@ impl BinOp {
 
 impl Rewrite for Lit {
     fn rewrite(&self, context: Context) -> Option<String> {
-        let code = self.to_axon_code();
-        let new_code =
-            format!("{indent}{code}", indent = context.indent(), code = code);
-        if context.str_within_max_width(&new_code) {
-            Some(new_code)
+        match self {
+            Self::Str(_) => self.rewrite_lit_str(context),
+            _ => {
+                let code = self.to_axon_code();
+                let new_code =
+                    format!("{indent}{code}", indent = context.indent(), code = code);
+                if context.str_within_max_width(&new_code) {
+                    Some(new_code)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl Lit {
+    fn rewrite_lit_str(&self, context: Context) -> Option<String> {
+        assert!(matches!(self, Self::Str(_)));
+
+        let one_line_str_lit = self.to_axon_code();
+        assert!(one_line_str_lit.lines().count() == 1);
+
+        let new_code1 =
+            format!("{indent}{str_lit}", indent = context.indent(), str_lit = one_line_str_lit);
+        if context.str_within_max_width(&new_code1) {
+            Some(new_code1)
         } else {
-            None
+            let triple_quote_str_lit = format!("\"\"{}\"\"", one_line_str_lit);
+            let first_line_indent = context.indent();
+            // Subsequent lines must be indented past the last triple quote
+            // on the first line:
+            let subsequent_line_indent = " ".repeat(context.indent + 3);
+            let lines = triple_quote_str_lit
+                .split("\\n")
+                .enumerate()
+                .map(|(index, line)| {
+                    let indent = if index == 0 {
+                        &first_line_indent
+                    } else {
+                        &subsequent_line_indent
+                    };
+                    let new_line = format!("{}{}", indent, line);
+                    if new_line.trim().is_empty() {
+                        "".to_owned()
+                    } else {
+                        new_line
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let new_code2 = lines.join("\n");
+            if context.str_within_max_width(&new_code2) {
+                Some(new_code2)
+            } else {
+                None
+            }
         }
     }
 }
@@ -2338,6 +2388,69 @@ mod tests {
 
     fn ex_id(s: &str) -> Expr {
         Expr::Id(Id::new(tn(s)))
+    }
+
+    #[test]
+    fn long_lit_str_works_1() {
+        let s = "some \"quote\" there\nnext line\n\nnext paragraph\n".to_owned();
+        let lit = Lit::Str(s);
+
+        // Check it gets rewritten on a single line when appropriate:
+        let one_line = lit.rewrite(nc(0, 53)).unwrap();
+        let one_line_expected = "\"some \\\"quote\\\" there\\nnext line\\n\\nnext paragraph\\n\"";
+        assert_eq!(one_line, one_line_expected);
+
+        let multi_line = lit.rewrite(nc(0, 52)).unwrap();
+        let multi_line_expected = "\"\"\"some \\\"quote\\\" there\n   next line\n\n   next paragraph\n   \"\"\"";
+        assert_eq!(multi_line, multi_line_expected);
+    }
+
+    // Same as long_lit_str_works_1 just with indentation.
+    #[test]
+    fn long_lit_str_works_2() {
+        let s = "some \"quote\" there\nnext line\n\nnext paragraph\n".to_owned();
+        let lit = Lit::Str(s);
+
+        // Check it gets rewritten on a single line when appropriate:
+        let one_line = lit.rewrite(nc(1, 54)).unwrap();
+        let one_line_expected = " \"some \\\"quote\\\" there\\nnext line\\n\\nnext paragraph\\n\"";
+        assert_eq!(one_line, one_line_expected);
+
+        let multi_line = lit.rewrite(nc(1, 53)).unwrap();
+        let multi_line_expected = " \"\"\"some \\\"quote\\\" there\n    next line\n\n    next paragraph\n    \"\"\"";
+        assert_eq!(multi_line, multi_line_expected);
+    }
+
+    #[test]
+    fn long_lit_str_works_3() {
+        let s = "\nnext line\nanother line".to_owned();
+        let lit = Lit::Str(s);
+
+        let multi_line = lit.rewrite(nc(0, 18)).unwrap();
+        let multi_line_expected = "\"\"\"\n   next line\n   another line\"\"\"";
+        assert_eq!(multi_line, multi_line_expected);
+    }
+
+    #[test]
+    fn long_lit_str_works_4() {
+        let s = "    \nnext line\nanother line".to_owned();
+        let lit = Lit::Str(s);
+
+        let multi_line = lit.rewrite(nc(1, 19)).unwrap();
+        let multi_line_expected = " \"\"\"    \n    next line\n    another line\"\"\"";
+        assert_eq!(multi_line, multi_line_expected);
+    }
+
+    #[test]
+    fn long_lit_str_works_5() {
+        let s = "next line\nanother line".to_owned();
+        let lit = Expr::Lit(Lit::Str(s));
+
+        let def = Def::new(tn("x"), lit);
+
+        let multi_line = def.rewrite(nc(0, 18)).unwrap();
+        let multi_line_expected = "x: \"\"\"next line\n   another line\"\"\"";
+        assert_eq!(multi_line, multi_line_expected);
     }
 
     #[test]
