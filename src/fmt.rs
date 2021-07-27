@@ -5,11 +5,8 @@ use crate::ast::{
     Throw, TrapCall, TryCatch,
 };
 
-// TODO exponential numbers
-// Potential future work:
+// TODO Potential future work:
 //     * Format .get() as []
-//     * Format really long strings with """ in Axon
-//     * Handle defcomps
 
 /// The size of a single block of indentation, the number of spaces (' ').
 const SPACES: usize = 4;
