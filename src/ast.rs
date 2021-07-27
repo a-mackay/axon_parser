@@ -1735,7 +1735,7 @@ impl Lit {
             Self::Bool(false) => "false".to_owned(),
             Self::Date(d) => d.format("%Y-%m-%d").to_string(),
             Self::Null => "null".to_owned(),
-            Self::Num(n) => number_to_axon_code(n),
+            Self::Num(n) => n.to_axon_code(),
             Self::Ref(r) => r.to_axon_code().to_owned(),
             Self::Str(s) => format!("{:?}", s).replace(r"\\$", r"\$"),
             Self::Symbol(s) => s.to_axon_code().to_owned(),
@@ -1743,14 +1743,6 @@ impl Lit {
             Self::Uri(s) => format!("`{}`", s),
             Self::YearMonth(ym) => ym.to_axon_code(),
         }
-    }
-}
-
-fn number_to_axon_code(n: &Number) -> String {
-    let scalar = n.value();
-    match n.unit() {
-        Some(unit) => format!("{}{}", scalar, unit),
-        None => format!("{}", scalar),
     }
 }
 
