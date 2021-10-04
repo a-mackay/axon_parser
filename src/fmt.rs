@@ -1403,6 +1403,7 @@ impl TryCatch {
     fn rewrite_one_line(&self, context: Context) -> Option<String> {
         let try_expr = self.try_expr.rewrite(context)?;
         let catch_expr = self.catch_expr.rewrite(context)?;
+        let catch_expr = catch_expr.trim_start();
 
         match (is_one_line(&try_expr), is_one_line(&catch_expr)) {
             (true, true) => match &self.exception_name {
